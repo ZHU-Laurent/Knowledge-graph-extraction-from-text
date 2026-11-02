@@ -1,0 +1,8 @@
+datasets
+networkx
+pytest
+pyyaml
+scikit-learn
+spacy
+torch
+transformers
