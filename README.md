@@ -2,7 +2,7 @@
 
 Text mining project: extract entities and explicit relations from text, then build a knowledge graph.
 
-We compare three relation extractors (rules, a fine-tuned Transformer and an LLM) to answer one question: which approach produces the best graph, at what cost, and with what kinds of errors?
+Our baseline is [PromptORE](https://arxiv.org/abs/2304.01209), an unsupervised relation extraction method, which we first reproduce on its FewRel dataset. We then compare three relation extractors (rules, a fine-tuned Transformer and an LLM) to answer one question: which approach produces the best graph, at what cost, and with what kinds of errors?
 
 See the full plan in [docs/project_plan.md](docs/project_plan.md) and the dataset selection in [docs/personal_researches.md](docs/personal_researches.md).
 
@@ -41,6 +41,7 @@ Data files are not stored in this repository. Download them into `data/raw/`:
 
 | Stage | Dataset |
 |---|---|
+| Baseline | [FewRel](https://github.com/thunlp/FewRel) |
 | Quick test | [CoNLL04](https://huggingface.co/datasets/DFKI-SLT/conll04) |
 | Final version | [SciERC](http://nlp.cs.washington.edu/sciIE/) |
 | Optional extension | [SciER](https://github.com/edzq/SciER) |
