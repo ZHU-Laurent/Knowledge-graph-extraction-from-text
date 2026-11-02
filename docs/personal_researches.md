@@ -1,51 +1,49 @@
 # Dataset selection
 
-Only the FewRel files and an unofficial copy of SciERC have been inspected so far. Check the formats, annotations and licenses of the others before use.
-
 ## Selected datasets
 
-| Role | Dataset | Why | Content | Access | License |
-|---|---|---|---|---|---|
-| Reproduce the baseline | [FewRel](https://github.com/thunlp/FewRel) | The dataset of the [PromptORE](https://arxiv.org/abs/2304.01209) paper | Wikipedia, 56,000 instances, 80 relations. Variants: FewRel NYT (25 relations, 2,500 instances) and FewRel PubMed (10 relations, 1,000 instances) | GitHub, also on [Hugging Face](https://huggingface.co/datasets/thunlp/few_rel) | MIT |
-| Evaluate the pipeline | [SciERC](http://nlp.cs.washington.edu/sciIE/) | Annotates every stage: entities, all relations in each text and coreference | 500 AI paper abstracts, 6 entity types, 7 relations | Official site or the version in the [PURE](https://github.com/princeton-nlp/PURE) repository | Unknown |
-| Test versatility (if time allows) | [FRAME](https://arxiv.org/abs/2602.19133) | A very different domain, built for knowledge graph construction | Art-historical descriptions, 37 entity types, typed relations, coreference, Wikidata alignment | [Zenodo](https://doi.org/10.5281/zenodo.18724632) | CC BY 4.0 |
-| Test longer documents (optional) | [SciER](https://arxiv.org/abs/2410.21155) | Full papers rather than abstracts | 106 AI papers, over 24,000 entities, over 12,000 relations | [GitHub](https://github.com/edzq/SciER) | Unknown |
+| Role | Dataset | Content | Access | License |
+|---|---|---|---|---|
+| Main dataset | Linked-Re-DocRED | Wikipedia documents with gold entities, coreference, entity links, 96 relations and a labeled test set | [Linked-DocRED repository](https://github.com/alteca/Linked-DocRED/tree/main/Linked-Re-DocRED) | GPL-3.0 |
+| Reproduce the PromptORE paper | [FewRel](https://github.com/thunlp/FewRel) | Wikipedia, 56,000 instances, 80 relations. Variants: FewRel NYT (2,500 instances, 25 relations) and FewRel PubMed (1,000 instances, 10 relations) | GitHub | MIT |
 
-## Why FewRel is not enough
+## Linked-DocRED or Linked-Re-DocRED
 
-FewRel annotates only one entity pair per instance and has at most one instance per pair. It cannot evaluate entity detection or pairs without a relation, and it would produce a sparse graph. We use it to reproduce the paper, not to evaluate the whole pipeline.
+| Measure | Linked-DocRED | Linked-Re-DocRED |
+|---|---|---|
+| Documents (train, dev, test) | 3,053, 998, 1,000 | 3,053, 500, 500 |
+| Relations in train | 38,058 | 85,932 |
+| Test set relation labels | **None** | **17,448** |
 
-## SciERC measurements
+The Linked-DocRED test set withholds relation labels, so we could not score on it ourselves. DocRED's annotations are also known to be incomplete, which is a problem when "no relation" is one of our classes.
 
-Measured on the unofficial copy [zj88zj/SCIERC](https://huggingface.co/datasets/zj88zj/SCIERC). Measure again on the official files.
+## Linked-Re-DocRED measurements
 
-| Measure | Value |
-|---|---|
-| Documents (train, dev, test) | 350, 50, 100 |
-| Sentences | 2,687, the longest with 101 tokens |
-| Entities | 8,094, including 1,338 `Generic` |
-| Relations | 4,648, none across sentences |
-| Same-sentence entity pairs | 12,211, of which 4,644 (38%) have a relation |
+| Measure | Train | Dev | Test |
+|---|---|---|---|
+| Entities | 59,359 | 9,684 | 9,779 |
+| Relations | 85,932 | 17,284 | 17,448 |
+| Relation types present | 96 | 95 | 95 |
+| Ordered entity pairs | 1,193,092 | 193,232 | 198,670 |
+| Ordered pairs with a relation | 67,808 (5.7%) | 13,362 (6.9%) | 13,627 (6.9%) |
+| Related pairs with several labels | 25.6% | 27.3% | 26.6% |
+| Related pairs also related in reverse | 39.8% | 42.1% | 40.9% |
+| Related pairs sharing a sentence | 48.3% | 47.5% | 47.6% |
+| Relation types with fewer than 50 instances | 5 | 30 | 33 |
+| Share of the 10 largest relation types | 64.0% | 60.7% | 62.1% |
 
-| Relation | Share |
-|---|---|
-| `USED-FOR` | 52.4% |
-| `CONJUNCTION` | 12.5% |
-| `EVALUATE-FOR` | 9.8% |
-| `HYPONYM-OF` | 8.8% |
-| `PART-OF` | 5.8% |
-| `FEATURE-OF` | 5.7% |
-| `COMPARE` | 5.0% |
+The largest relations in train are "located in the administrative territorial entity" (23.7%), "country" (16.8%) and "country of citizenship" (5.4%).
 
-## Points to check
+Each document has a title, tokenized sentences, entities and relations. Each entity has an id, a type (`NUM`, `TIME`, `PER`, `ORG`, `LOC` or `MISC`), its mentions and an entity link. Each relation has a Wikidata code `r`, a head `h`, a tail `t` and evidence sentences.
 
-- **SciERC copies:** copies on Hugging Face are unofficial and state no license. Use the official source for final results.
-- **FRAME:** check the number of documents and relations on Zenodo, and test the conversion from its UIMA XMI format.
+## Why FewRel alone is not enough
+
+FewRel annotates one entity pair per instance, has at most one instance per pair and has no "no relation" class. We only use it to check that we can reproduce the paper.
 
 ## Datasets set aside
 
-- **CoNLL04:** SciERC is already small, and FewRel PubMed covers quick tests of the relation step.
-- **DocRED, Re-DocRED, DWIE:** useful for relations across sentences, which our pipeline does not handle.
+- **SciERC, FRAME, SciER:** useful for the earlier end-to-end pipeline or other domains, but not needed for the reduced scope. They can serve as an extension.
+- **Linked-DocRED:** its test set has no relation labels.
+- **CoNLL04:** too few relations for a meaningful clustering study.
 - **TACRED, Re-TACRED:** access may require a license.
 - **REBEL, SREDFM, T-REx:** automatic annotation, less reliable for evaluation.
-- **POPCORN, REDFM:** only relevant if the project moves to French.

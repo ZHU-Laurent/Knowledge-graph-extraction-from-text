@@ -1,9 +1,6 @@
-datasets
-gliner
-networkx
+numpy
 pytest
 pyyaml
 scikit-learn
-spacy
 torch
 transformers

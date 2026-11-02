@@ -1,94 +1,96 @@
 # Knowledge graph project: plan
 
-**Goal:** build a knowledge graph from raw text with a pipeline that needs no annotations from the target domain, using [PromptORE](https://arxiv.org/abs/2304.01209) as its relation step.
+**Scope, agreed with the teacher:** use a dataset labeled with entities and relations, find relations with PromptORE or another method, and assign each discovered cluster to a relation from a fixed list that includes "no relation".
 
-**Research question:** how far can an unsupervised, domain-independent pipeline built around PromptORE go from raw text to a usable knowledge graph, and how much quality does each stage lose?
+**Research question:** how well can [PromptORE](https://arxiv.org/abs/2304.01209) clusters, mapped to a fixed list of relations, recover labeled relations and reject pairs without a relation, compared with a classifier trained on the same embeddings?
 
-## Why PromptORE needs a pipeline
+**Out of scope:** entity detection, entity normalization and graph construction as a main goal. Entities come from the dataset, so predicted triples can already form a graph if we want one for the demo.
 
-PromptORE embeds each entity pair with a prompt and an untrained BERT, then clusters the embeddings to discover relations. On its own, it:
+## Dataset
 
-- expects the entities as input;
-- assumes every pair expresses a relation;
-- returns unnamed clusters, not named triples.
+We use **Linked-Re-DocRED** from the [Linked-DocRED repository](https://github.com/alteca/Linked-DocRED). See [personal_researches.md](personal_researches.md) for the measurements.
 
-The upstream stages supply the entity pairs. The downstream stages turn the clusters into triples and a graph.
+- **Relation list:** the 96 relations in `rel_info.json`, plus "no relation".
+- **Why this variant:** the Linked-DocRED test set has no relation labels, and DocRED's incomplete annotations would make many real relations look like "no relation". Linked-Re-DocRED labels its test set and doubles the number of relations.
 
 ## Pipeline
 
-| # | Stage | First version | Later improvement |
-|---|---|---|---|
-| 1 | Split into sentences | spaCy | |
-| 2 | Detect entities | GLiNER, with entity types given as a per-corpus setting | |
-| 3 | Build candidate pairs | Every pair in the same sentence, in order of appearance | Limit pairs by distance |
-| 4 | Filter pairs without a relation | None: PromptORE receives every pair | Rules, then an NLI model or an LLM |
-| 5 | Embed and cluster | PromptORE prompt with BERT, k-means, and k estimated with the elbow rule | Alternative prompts |
-| 6 | Filter the results | Remove instances far from their cluster centre, using a fixed percentile | Remove clusters with low cohesion |
-| 7 | Name the clusters | Give an LLM the sentences closest to each centre; it returns a name or "no clear relation". Merge clusters with the same name | Decide the direction of each instance |
-| 8 | Build triples | (entity 1, cluster name, entity 2), with the source sentence and a confidence score. Drop pronouns and generic mentions | Add coreference resolution |
-| 9 | Normalize entities and build the graph | Merge mentions with simple rules, then store with NetworkX | Embedding similarity, Wikidata linking |
+| # | Stage | First version |
+|---|---|---|
+| 1 | Load the data | Documents, gold entities and gold relations. Keep the official splits |
+| 2 | Build candidates | Every ordered entity pair in a document, removing entity type pairs never seen with a relation in train |
+| 3 | Embed | PromptORE's `[MASK]` embedding from an untrained BERT, with the document as context |
+| 4 | Cluster | k-means on train embeddings, fitted without labels. Dev decides k, testing values above the number of relations |
+| 5 | Map clusters to relations | Use train labels to link each cluster to relations whose precision in that cluster passes a threshold. Other clusters map to "no relation". Dev sets the threshold |
+| 6 | Predict | Assign each dev or test pair to its nearest cluster and output that cluster's relations |
+| 7 | Evaluate and compare | See below |
 
 ## Design decisions
 
-These decisions come from reviewing the pipeline against the paper, the PromptORE code and the SciERC data. The SciERC figures were measured on an unofficial copy and should be measured again on the official files.
+Measured on the Linked-DocRED and Linked-Re-DocRED files.
 
-| Issue | Evidence | Decision |
+| Issue | Evidence (Linked-Re-DocRED test) | Decision |
 |---|---|---|
-| Pairs without a relation | 38% of the 12,211 same-sentence pairs in SciERC have a relation, so 62% do not | Stage 4 starts empty and serves as our no-filter baseline. These pairs may not form their own clusters and can contaminate real ones, so we measure the share of them in each cluster |
-| Unbalanced relations | `USED-FOR` is 52.4% of SciERC relations, while FewRel is perfectly balanced | k-means may split large relations, so stage 7 merges clusters with the same name. We report results before and after merging |
-| Relation direction | Pairs follow order of appearance, but the text can state a relation in either direction | The first version is scored without direction. Direction is a later improvement |
-| Entities that make poor nodes | SciERC labels 1,338 of 8,094 entities as `Generic`, and about 183 look like pronouns | Stage 8 drops them, and we report how many triples this removes. Coreference resolution could recover them later |
-| Long sentences | The longest SciERC sentence has 101 tokens. The PromptORE code truncates the whole prompt, and fails if `[MASK]` is cut off | Our version truncates only the sentence and always keeps the prompt |
-| Sentence-level extraction | No SciERC relation crosses a sentence boundary | Same-sentence pairs lose no SciERC relation. Other corpora may differ |
-| Entity types per corpus | GLiNER needs a list of entity types | This is the only per-corpus setting. It needs no annotations or training |
-| Tuning without labels | Using labels to set thresholds would break the unsupervised goal | Thresholds stay fixed. Labels only measure how sensitive the results are |
-| Code license | The PromptORE code is under GPL-3.0 | We run the original outside this repository to reproduce the paper, and write our own version from the paper's description |
+| PromptORE works on sentences, but these relations are document-level | Only 47.6% of related pairs share a sentence | Use the document as prompt context. Compare with the sentence-level version, which limits recall |
+| Pairs without a relation dominate | 6.9% of ordered pairs have a relation | Majority vote would map almost every cluster to "no relation", so we use a precision threshold instead |
+| Several relations per pair | 26.6% of related pairs have more than one label | A cluster can map to several relations |
+| Relation direction | 40.9% of related pairs are also related in reverse | Candidates are ordered pairs, and scoring takes direction into account |
+| Rare relations | The 10 largest relations hold 62.1% of instances, and 33 have fewer than 50 | Report micro and macro F1, plus results by relation frequency |
+| Prompt length | Documents average 197 words, and BERT accepts 512 tokens | Truncate only the document, never the prompt, and report how many are truncated |
+| Number of pairs | Train has about 1.2 million ordered pairs | Remove impossible type pairs, then fit k-means on a sample. We compare a random sample, which uses no labels, with one balanced using train labels |
+| Multiple mentions | An entity can appear under several names | Use its longest mention in the prompt in the first version |
+| Remaining annotation gaps | Re-DocRED is more complete, but may still miss relations | Review a sample of false positives by hand |
+| Code license | The PromptORE and Linked-DocRED code is under GPL-3.0 | Keep the original code in `external/`, and write our own version from the papers. Check the license if any of it enters this repository |
+
+The clusters use no labels, but the mapping does. This setup is therefore not fully unsupervised, and the report must say so.
 
 ## Evaluation
 
-| Stage | Measure |
+**Main score:** precision, recall and F1 on predicted (document, head, relation, tail) facts, excluding "no relation", with micro and macro averages. We cross-check our score against the repository's `relation_f1.py`.
+
+**Also reported:**
+
+- B³, V-measure and ARI on related pairs, to compare with the PromptORE paper.
+- Share of pairs without a relation in each cluster.
+- Errors by relation frequency, shared sentence or not, and number of labels.
+
+**Comparisons:**
+
+| Method | Purpose |
 |---|---|
-| Entities | Precision, recall and F1 |
-| Pair filter | Share of real relations kept and of other pairs removed |
-| Clustering | B³, V-measure and ARI, with gold pairs, then all gold-entity pairs, then predicted entities |
-| Cluster names | Manual review of a sample |
-| Triples | Precision, recall and F1 after mapping each cluster to its majority relation |
+| Sentence-level PromptORE | Shows what document context adds |
+| Linear classifier on the same embeddings | Shows the cost of going through clusters rather than training directly on labels |
+| ATLOP from the Linked-DocRED repository (optional) | Gives a supervised state-of-the-art reference |
 
-**Avoiding leakage on SciERC:**
-
-- Fit the clustering on all abstracts, since this step uses no labels.
-- Map clusters to relations using the train and dev labels only.
-- Make decisions on dev, and report final triple scores on test only once.
-
-The cluster mapping uses labels, so it is for evaluation only and gives an upper bound on what the unsupervised pipeline achieves. Clustering scores and supervised F1 scores from other papers are not directly comparable.
+**Avoiding leakage:** make every decision on dev, and score test only once at the end.
 
 ## Work plan
 
-Each milestone adds one stage, so we can measure its cost and always have a result to present.
-
-1. **Reproduce PromptORE on FewRel.** Run the original code in its own environment, starting with FewRel PubMed and NYT as quick tests. With BERT and k = 80, the paper reports a B³ F1 of 48.8, a V-measure F1 of 71.8 and an ARI of 43.4. Record any gap. The paper's prompt ends with a period and the main script's prompt does not, so we test both.
-2. **Run our version on SciERC with gold pairs.** This tests whether PromptORE finds relations in a scientific domain with unbalanced data.
-3. **Add every gold-entity pair.** This measures the effect of pairs without a relation.
-4. **Add naming, triples and the graph.** This gives the first complete graph.
-5. **Add the filters** (stage 4 and the cluster filter) and measure their effect against milestone 3.
-6. **Replace gold entities with GLiNER.** This gives the raw-text pipeline and shows the cost of entity errors.
-7. **Test versatility on FRAME**, a very different domain, if time allows.
-8. **Write the report** and prepare a short graph demo.
+1. **Reproduce PromptORE on FewRel.** Run the original code in its own environment, starting with FewRel PubMed. With BERT and k = 80, the paper reports a B³ F1 of 48.8, a V-measure F1 of 71.8 and an ARI of 43.4 on FewRel. The paper's prompt ends with a period and the main script's does not, so we test both.
+2. **Load Linked-Re-DocRED** and build the candidates. Count pairs after type filtering, and check that no real relation is lost on train.
+3. **Cluster related pairs only.** Compare sentence and document context with the clustering metrics.
+4. **Add pairs without a relation** and measure how they affect the clusters.
+5. **Map clusters to relations** and tune k and the threshold on dev.
+6. **Train the linear classifier** on the same embeddings.
+7. **Analyze errors** on dev, then run the final test evaluation once.
+8. **Write the report** and prepare a short demo.
 
 ## Main risks
 
-- **Pairs without a relation:** they are the largest share of SciERC pairs and may be hard to filter without labels. This is where the project can add the most to the paper.
-- **Small corpora:** clustering needs enough instances. SciERC is much smaller than FewRel, and the elbow rule may be less reliable there.
-- **New text:** clusters are computed on a whole corpus. New text would have to be assigned to the nearest cluster, or the corpus clustered again.
-- **Misleading names:** a mixed cluster can receive a confident but wrong name, so we review a sample by hand.
+- **Mixed clusters:** pairs without a relation can contaminate real clusters. A high threshold then loses recall, and a low one loses precision.
+- **Rare relations:** many are unlikely to get their own cluster, so macro F1 may stay low.
+- **Compute:** embedding hundreds of thousands of pairs may need a GPU. Start with a subset of documents.
+- **Document context:** the paper only tests sentences, so longer context may not help.
 
 ## Optional extensions
 
-- Compare with a supervised relation extractor on SciERC.
-- Add coreference resolution and measure its effect.
-- Link entities to Wikidata.
-- Build a small interface to explore the graph.
+- Map clusters without labels, by comparing them with relation names and descriptions in `rel_info.json`.
+- Use an LLM to match clusters to the relation list.
+- Test the alternative prompts from the paper.
+- Show predicted triples as a graph.
 
 ## To confirm with the teacher
 
+- Is Linked-Re-DocRED acceptable in place of Linked-DocRED?
+- Should we keep all 96 relations, or use a shorter list?
 - What are the expected deliverables and deadlines?
