@@ -71,3 +71,18 @@ def relation_scores(docs, predicted, train_names):
     scores = {name: round(100 * value, 2) for name, value in scores.items()}
     scores.update({"predicted_facts": len(predicted), "gold_facts": len(gold)})
     return scores
+
+
+def typing_scores(docs, predicted):
+    """Return the F1 of predicted facts on the pairs that are related and detected.
+
+    Only pairs with a gold relation and at least one predicted relation are kept, so
+    the score measures typing alone: missed pairs and false pairs are detection errors.
+    """
+    gold = gold_facts(docs)
+    pairs = {fact[:3] for fact in gold} & {fact[:3] for fact in predicted}
+    kept = {fact for fact in predicted if fact[:3] in pairs}
+    gold = {fact for fact in gold if fact[:3] in pairs}
+    precision, recall, f1 = _prf(len(kept & gold), len(kept), len(gold))
+    return {"typing_precision": round(100 * precision, 2),
+            "typing_recall": round(100 * recall, 2), "typing_f1": round(100 * f1, 2)}

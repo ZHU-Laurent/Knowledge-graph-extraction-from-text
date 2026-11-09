@@ -2,7 +2,7 @@
 
 Text mining project: build a knowledge graph from documents whose entities are known.
 
-**Branch `known-entities-v1`.** This branch does not follow the plan of `main`. It assumes the entities are given, with their mentions, types and Wikidata links, and only covers relation detection and graph construction. It is a first working version, with one method and no comparison with other methods. See [docs/known_entities_v1.md](docs/known_entities_v1.md).
+**Branch `known-entities-v1`.** This branch does not follow the plan of `main`. It assumes the entities are given, with their mentions, types and Wikidata links, and only covers relation detection and graph construction. Its main method is an ATLOP-style classifier, compared with two methods built on PromptORE (classifier, and detector then clusters). See [docs/known_entities_v1.md](docs/known_entities_v1.md).
 
 ## Pipeline
 
@@ -21,6 +21,7 @@ Documents with known entities (Linked-Re-DocRED)
 PYTHONPATH=src python scripts/train_relation_model.py
 PYTHONPATH=src python scripts/build_graph.py --split dev
 PYTHONPATH=src python scripts/build_graph.py --split test
+PYTHONPATH=src python scripts/compare_methods.py
 ```
 
 The first script encodes train and dev once, caches the features in `data/processed/features/`, trains the classifier and keeps the epoch with the best dev F1. The second writes the predictions, the graph (JSON and GraphML) and a report to `results/known_entities/`.

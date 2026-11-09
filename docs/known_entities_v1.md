@@ -1,8 +1,8 @@
 # Known entities v1: relation detection and graph construction
 
-**Branch:** `known-entities-v1`. **Status:** first working version. Test: relation F1 57.76, graph F1 59.18 (section 6).
+**Branch:** `known-entities-v1`. **Status:** first working version, compared with two PromptORE methods. Test: relation F1 57.76, graph F1 59.18 (section 6). Comparison in section 7.
 
-This branch does not follow the plan of `main` ([project_plan.md](project_plan.md)). It assumes that the entities of each document are known, and builds only two things: the detection of relations between these entities, and a knowledge graph of the whole corpus. It uses one method and makes no comparison with other methods.
+This branch does not follow the plan of `main` ([project_plan.md](project_plan.md)). It assumes that the entities of each document are known, and builds only two things: the detection of relations between these entities, and a knowledge graph of the whole corpus. Its main method is an ATLOP-style classifier. Section 7 compares it with two methods built on PromptORE, the baseline paper of the project.
 
 This document explains what happens at each step: dataset, processing, training, evaluation and graph construction.
 
@@ -265,7 +265,54 @@ One run, seed 0, on 2026-11-09. The best dev F1 was reached at epoch 19. Trainin
 
 **Bug found and fixed:** in the dataset, dates and numbers have the Wikidata value `#ignored#`, and entities without an item have placeholders such as `#DocRED-246#`. The first graph took them for items, so all dates and numbers merged into one node. Only identifiers of the form `Q<number>` now count as links. The scores above are after the fix.
 
-## 7. Limits and next steps
+## 7. Comparison with PromptORE
+
+The relation step of the pipeline was also run with two methods built on [PromptORE](https://arxiv.org/abs/2304.01209), the baseline paper of the project. Everything else is the same: known entities, graph rules and metrics. Code: `scripts/compare_methods.py`.
+
+### The three methods
+
+| Method | Representation of a pair | Detection | Typing | Labels used |
+|---|---|---|---|---|
+| **ATLOP** (sections 2 and 3) | Entity and context vectors from one pass of a frozen `bert-base-cased` per document | Learned threshold of each pair | Same classifier | Train, all pairs |
+| **PromptORE + classifier** | `[CLS] <context> <head> [MASK] <tail>. [SEP]` through a frozen `bert-base-uncased`, the `[MASK]` vector. One pass per pair. Context: the sentences of the two closest mentions | Logistic regression "has a relation" | One logistic regression per relation, on related pairs | Train, sample of pairs |
+| **PromptORE + clusters** | Same `[MASK]` vectors | Same detector | k-means on related train pairs, without labels. Each cluster scores each relation by the share of its train pairs that have it. A pair takes the scores of its nearest cluster | Train, for the detector and to name the clusters |
+
+- **PromptORE + clusters** is the closest to the paper: relations come from unsupervised clusters. The paper assumes every instance has a relation, which is false here (93% of pairs have none), so a detector filters pairs first.
+- **PromptORE + classifier** uses the same vectors, but types pairs with labels directly. The gap between the two PromptORE methods measures the cost of typing through clusters.
+- Both PromptORE methods score a fact as `P(related) × score of the relation`. They differ only in the second factor.
+- **PromptORE training sample:** all 67,808 related train pairs and three times as many unrelated pairs, drawn at random (seed 0), with weights that restore the true share of unrelated pairs. Pairs whose two entity types never carry a relation in train are skipped and count as "no relation". This sample and its embeddings are the same as for the probe of `main` (`scripts/train_relation_probe.py`).
+- **Settings chosen on dev:** the fact threshold of both PromptORE methods (0.18 and 0.17), and the number of clusters, among 100, 200 and 400 (dev F1 41.95, 43.47 and 44.15, so k = 400). ATLOP has no threshold set on dev: it uses its learned threshold.
+
+### Results on test
+
+One run, seed 0. Test was scored once, with the settings chosen on dev.
+
+| Method | Precision | Recall | F1 | Ign F1 | Intra F1 | Inter F1 | Detection F1 | Typing F1 | Graph F1 | Graph P@1,000 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ATLOP | 73.73 | 47.48 | **57.76** | **56.75** | **60.82** | **55.02** | **60.11** | **92.25** | **59.18** | **98.1** |
+| PromptORE + classifier | 49.18 | 51.78 | 50.45 | 48.09 | 55.24 | 46.81 | 53.25 | 89.02 | 50.72 | 94.9 |
+| PromptORE + clusters | 46.77 | 45.97 | 46.37 | 44.10 | 50.14 | 43.47 | 51.21 | 84.14 | 46.48 | 94.7 |
+
+On dev, F1 is 58.75, 49.24 and 44.15, in the same order.
+
+**Typing F1** only keeps the pairs that are related in the gold annotations and detected by the method, so it measures the choice of relation alone. Missed pairs and false pairs are counted by detection F1.
+
+### What the comparison shows
+
+- **Detection is the hard part, for every method.** Typing F1 is between 84 and 92, while detection F1 is between 51 and 60. When a method finds a related pair, it usually gives it the right relation. This confirms the hypothesis of the main plan.
+- **ATLOP wins mainly on detection:** 60.1 against 53.3 and 51.2. Its precision is much higher (73.7 against 49.2 and 46.8), for a similar recall.
+- **Clusters cost about 5 points of typing F1** against the classifier on the same vectors (84.1 against 89.0), and 4 points of F1. Typing through 400 unsupervised clusters keeps most of the information.
+- **Pairs across sentences** are where PromptORE loses most: inter F1 is 8 to 12 points below ATLOP, against 6 to 11 points for intra F1. The PromptORE context only holds the sentences of the two closest mentions, while ATLOP reads the whole document.
+- **Graphs:** ATLOP gives the smallest and most precise graph (10,203 edges). The PromptORE graphs have about 16,600 and 15,500 edges, with graph precision of 48.6 and 46.0. All three rank their edges well: the 1,000 most confident edges are 95% to 98% correct.
+- **Cost:** PromptORE needs one BERT pass per pair. Embedding the 198,000 test pairs took about 1.5 hours on the Mac GPU, against about 30 seconds to encode the 500 test documents for ATLOP.
+
+### Limits of this comparison
+
+- **The encoders differ:** `bert-base-cased` for ATLOP, `bert-base-uncased` for PromptORE as in the paper, and ATLOP uses the mean of the last 4 layers.
+- **Thresholds differ:** the PromptORE methods take theirs from dev, ATLOP learns one. Setting ATLOP's on dev could only help it.
+- **One seed:** no standard deviation, and no significance test yet.
+
+## 8. Limits and next steps
 
 - **Frozen encoder:** fine-tuning the encoder is the most likely large gain, mainly for recall.
 - **Low recall:** the learned threshold is strict. Lowering the score needed to predict a fact, chosen on dev, would trade precision for recall.
@@ -274,7 +321,7 @@ One run, seed 0, on 2026-11-09. The best dev F1 was reached at epoch 19. Trainin
 - **Settings not tuned:** layers, learning rate and block size are usual defaults.
 - **Known entities:** a real system must find the entities itself, which this branch does not cover.
 
-## 8. Files
+## 9. Files
 
 | File | Role |
 |---|---|
@@ -284,4 +331,7 @@ One run, seed 0, on 2026-11-09. The best dev F1 was reached at epoch 19. Trainin
 | `src/kg_extraction/evaluation/graph.py` | Graph metrics and summary |
 | `scripts/train_relation_model.py` | Training |
 | `scripts/build_graph.py` | Prediction, graph and report for dev or test |
+| `src/kg_extraction/relations/encoder.py`, `cache.py`, `probe.py`, `prompts.py` | PromptORE embeddings and classifier, from `main` |
+| `src/kg_extraction/relations/clustering.py` | k-means and the mapping of clusters to relations |
+| `scripts/compare_methods.py` | The comparison of section 7 |
 | `tests/test_known_entities.py` | Unit tests |

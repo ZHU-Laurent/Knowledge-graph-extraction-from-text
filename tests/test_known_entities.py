@@ -95,3 +95,24 @@ def test_markers_wrap_every_mention(docs):
     assert all(tokens[position] == "*" for entity in positions for position in entity)
     assert tokens.count("*") == 6
     assert windows(600, window=510, stride=256) == [(0, 510), (90, 600)]
+
+
+def test_cluster_typer_maps_clusters_to_relation_shares():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("sklearn")
+    from kg_extraction.relations.clustering import ClusterTyper
+
+    embeddings = np.array([[0.0, 0.0], [0.1, 0.0], [10.0, 10.0], [10.1, 10.0]])
+    labels = [["P19"], ["P19", "P17"], ["P17"], ["P17"]]
+    typer = ClusterTyper(["P17", "P19"], n_clusters=2).fit(embeddings, labels)
+    assert typer.scores(np.array([[0.05, 0.0]])).tolist() == [[0.5, 1.0]]
+    assert typer.scores(np.array([[10.0, 10.1]])).tolist() == [[1.0, 0.0]]
+
+
+def test_typing_scores_ignore_unrelated_pairs(docs):
+    from kg_extraction.evaluation.relations import typing_scores
+
+    predicted = {(0, 0, 1, "P19"), (0, 0, 2, "P17"), (0, 1, 2, "P17")}
+    scores = typing_scores(docs, predicted)
+    assert scores["typing_precision"] == 50.0
+    assert scores["typing_recall"] == 50.0
