@@ -36,16 +36,18 @@ def clustering_scores(gold, pred):
             "n_instances": len(gold), "n_clusters": len(set(pred))}
 
 
-def fact_scores(gold_facts, pred_facts):
+def fact_scores(gold_facts, pred_facts, ignore=()):
     """Precision, recall and F1 on facts, excluding "no relation".
 
     Facts are (doc_id, head, relation, tail) tuples. Duplicates are ignored. With gold entities, this
     should equal the micro Relation F1 of Linked-DocRED (metrics/relation_f1.py, hard aggregation);
     the project plan still cross-checks the two once.
+    Facts in `ignore` are removed from both sides (used to score a subset of the gold facts).
     Returns micro scores, macro scores over gold relation types, and per-relation counts.
     """
-    gold = {f for f in gold_facts if f[2] != NO_RELATION}
-    pred = {f for f in pred_facts if f[2] != NO_RELATION}
+    ignore = set(ignore)                      # facts that count neither as hits nor as errors
+    gold = {f for f in gold_facts if f[2] != NO_RELATION} - ignore
+    pred = {f for f in pred_facts if f[2] != NO_RELATION} - ignore
     tp = gold & pred
     micro_p = len(tp) / len(pred) if pred else 0.0
     micro_r = len(tp) / len(gold) if gold else 0.0
@@ -63,3 +65,9 @@ def fact_scores(gold_facts, pred_facts):
             "macro_f1": float(np.mean(f1s)) if f1s else 0.0,
             "n_gold": len(gold), "n_pred": len(pred), "n_tp": len(tp),
             "per_relation": per_relation}
+
+
+def prf(n_tp, n_pred, n_gold):
+    p = n_tp / n_pred if n_pred else 0.0
+    r = n_tp / n_gold if n_gold else 0.0
+    return p, r, (2 * p * r / (p + r) if p + r else 0.0)

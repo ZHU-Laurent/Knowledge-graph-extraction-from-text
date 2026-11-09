@@ -4,8 +4,8 @@ A run folder holds a card.json and prediction files named by convention (see doc
 
     results/<run>/card.json
     results/<run>/fewrel_<nyt|pubmed>_<k_true|k_est|other>_seed<N>.csv     columns: id,cluster
-    results/<run>/redocred_<dev|test>_facts.csv                            columns: doc_id,h,r,t
-    results/<run>/redocred_<dev|test>_clusters.csv  (optional)             columns: doc_id,h,t,cluster
+    results/<run>/redocred_<dev|dev_debug|test>_facts.csv                  columns: doc_id,h,r,t
+    results/<run>/redocred_<dev|dev_debug|test>_clusters.csv  (optional)   columns: doc_id,h,t,cluster
 
 Usage:
     python scripts/evaluate.py results/<run>
@@ -23,8 +23,9 @@ from collections import defaultdict
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from kg_extraction.data.benchmark import read_fewrel_gold, redocred_gold_facts  # noqa: E402
-from kg_extraction.evaluation.metrics import clustering_scores, fact_scores  # noqa: E402
+from kg_extraction.data.benchmark import read_fewrel_gold  # noqa: E402
+from kg_extraction.data.redocred import RedocredGold, relation_buckets  # noqa: E402
+from kg_extraction.evaluation.metrics import NO_RELATION, clustering_scores, fact_scores, prf  # noqa: E402
 
 CARD_FIELDS = ["run", "author", "method", "supervision", "training_data", "models", "description"]
 SUPERVISION = {"none", "labels_for_mapping", "supervised"}
@@ -63,21 +64,64 @@ def score_fewrel(run_dir):
 
 
 def score_redocred(run_dir):
-    groups = {}
+    """Main track. Besides overall micro/macro scores it reports:
+    - evid_*     facts whose gold annotation lists evidence sentences only (Re-DocRED added many facts
+                 without evidence; predictions of those facts are then neither hits nor errors)
+    - recall on pairs that share a sentence vs. pairs that do not
+    - macro F1 on frequent / medium / rare relations (by train frequency)
+    - detection P/R/F1: does the pair have at least one relation?
+    - B3 / V / ARI on single-label related pairs, if a clusters file is given."""
+    groups, buckets = {}, None
     for path in sorted(glob.glob(os.path.join(run_dir, "redocred_*_facts.csv"))):
-        split = re.match(r"redocred_(dev|test)_facts\.csv$", os.path.basename(path)).group(1)
-        gold_facts, pair_labels = redocred_gold_facts(os.path.join(REDOCRED, f"{split}_revised.json"))
-        pred = {(r["doc_id"], int(r["h"]), r["r"], int(r["t"])) for r in read_csv(path)}
-        s = fact_scores(gold_facts, pred)
-        s.pop("per_relation")
-        cl_path = os.path.join(run_dir, f"redocred_{split}_clusters.csv")
+        m = re.match(r"redocred_(dev|dev_debug|test)_facts\.csv$", os.path.basename(path))
+        if not m:
+            sys.exit(f"bad file name: {path} (allowed subsets: dev, dev_debug, test)")
+        subset = m.group(1)
+        gold = RedocredGold(subset, REDOCRED)
+        buckets = buckets or relation_buckets(REDOCRED)
+        pred = set()
+        for row in read_csv(path):
+            doc, h, r, t = row["doc_id"], int(row["h"]), row["r"], int(row["t"])
+            if doc not in gold.docs:
+                sys.exit(f"{path}: document {doc} is not in subset {subset}")
+            if not (0 <= h < gold.n_entities(doc) and 0 <= t < gold.n_entities(doc)) or h == t:
+                sys.exit(f"{path}: bad entity pair ({doc}, {h}, {t})")
+            if r != NO_RELATION and r not in buckets:
+                sys.exit(f"{path}: unknown relation {r}")
+            pred.add((doc, h, r, t))
+
+        s = fact_scores(gold.facts, pred)
+        per_rel = s.pop("per_relation")
+        ev = fact_scores(gold.facts, pred, ignore=gold.facts - gold.with_evidence)
+        s.update({"evid_p": ev["micro_p"], "evid_r": ev["micro_r"], "evid_f1": ev["micro_f1"]})
+
+        hits = {f for f in gold.facts if f in pred}
+        for name, keep in (("intra", True), ("inter", False)):
+            g = [f for f in gold.facts if gold.same_sentence(f[0], f[1], f[3]) == keep]
+            s[f"recall_{name}_sentence"] = sum(f in hits for f in g) / len(g) if g else 0.0
+        for b in ("frequent", "medium", "rare"):
+            f1s = [v["f1"] for r, v in per_rel.items() if buckets.get(r) == b]
+            s[f"macro_f1_{b}"] = float(np.mean(f1s)) if f1s else 0.0
+
+        gold_pairs = set(gold.pair_labels)
+        pred_pairs = {(d, h, t) for d, h, r, t in pred if r != NO_RELATION}
+        s["detect_p"], s["detect_r"], s["detect_f1"] = prf(len(gold_pairs & pred_pairs), len(pred_pairs), len(gold_pairs))
+
+        with open(os.path.join(run_dir, f"redocred_{subset}_per_relation.csv"), "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["relation", "bucket", "gold", "pred", "tp", "p", "r", "f1"])
+            for r, v in sorted(per_rel.items(), key=lambda kv: -kv[1]["gold"]):
+                w.writerow([r, buckets.get(r), v["gold"], v["pred"], v["tp"],
+                            round(v["p"], 4), round(v["r"], 4), round(v["f1"], 4)])
+
+        cl_path = os.path.join(run_dir, f"redocred_{subset}_clusters.csv")
         if os.path.exists(cl_path):
-            # clustering metrics on related pairs with a single gold label (as in the PromptORE paper)
             clusters = {(r["doc_id"], int(r["h"]), int(r["t"])): r["cluster"] for r in read_csv(cl_path)}
-            keys = [k for k, labels in pair_labels.items() if len(labels) == 1 and k in clusters]
-            cs = clustering_scores([next(iter(pair_labels[k])) for k in keys], [clusters[k] for k in keys])
-            s.update({f"cl_{k}": v for k, v in cs.items()})
-        groups[(f"redocred_{split}", "main")] = [s]
+            keys = [k for k, labels in gold.pair_labels.items() if len(labels) == 1 and k in clusters]
+            if keys:
+                cs = clustering_scores([next(iter(gold.pair_labels[k])) for k in keys], [clusters[k] for k in keys])
+                s.update({f"cl_{k}": v for k, v in cs.items()})
+        groups[(f"redocred_{subset}", "main")] = [s]
     return groups
 
 
@@ -110,7 +154,8 @@ def main():
     json.dump(rows, open(os.path.join(args.run_dir, "scores.json"), "w"), indent=1)
 
     for r in rows:
-        main_keys = ["micro_p", "micro_r", "micro_f1", "macro_f1"] if "micro_f1" in r else ["b3_f1", "v_f1", "ari"]
+        main_keys = (["micro_p", "micro_r", "micro_f1", "macro_f1", "evid_f1", "detect_f1"] if "micro_f1" in r
+                     else ["b3_f1", "v_f1", "ari"])
         shown = "  ".join(f"{k}={r[k]:.3f}" + (f"±{r[k + '_std']:.3f}" if k + "_std" in r else "")
                           for k in main_keys)
         print(f"{r['dataset']:15s} {r['setting']:8s} seeds={r['n_seeds']}  {shown}")

@@ -3,8 +3,7 @@
 FewRel NYT / PubMed (clustering track): one instance per (sentence, head, tail). The id is the position in
 the official file order, so it does not reveal the relation. Gold labels are kept in a separate file.
 
-Linked-Re-DocRED (main track): gold facts are (doc_id, h, r, t), with doc_id the document's `id` field
-and h, t the entity indexes in its `entities` list.
+Linked-Re-DocRED (main track) lives in kg_extraction.data.redocred.
 """
 import csv
 import json
@@ -49,15 +48,3 @@ def read_fewrel_gold(path):
     with open(path, encoding="utf-8") as f:
         return {row["id"]: row["relation"] for row in csv.DictReader(f)}
 
-
-def redocred_gold_facts(path):
-    """Gold facts {(doc_id, h, r, t)} of a Linked-Re-DocRED split, plus the label list of each related pair."""
-    with open(path, encoding="utf-8") as f:
-        docs = json.load(f)
-    facts, pair_labels = set(), {}
-    for doc in docs:
-        for rel in doc["relations"]:
-            fact = (str(doc["id"]), int(rel["h"]), rel["r"], int(rel["t"]))
-            facts.add(fact)
-            pair_labels.setdefault((fact[0], fact[1], fact[3]), set()).add(rel["r"])
-    return facts, pair_labels
