@@ -16,7 +16,7 @@ Documents with gold entities (Linked-Re-DocRED)
 
 See [docs/project_plan.md](docs/project_plan.md) for the design decisions, evaluation and work plan, and [docs/personal_researches.md](docs/personal_researches.md) for the dataset selection.
 
-To compare methods, everyone scores prediction files with the same benchmark and evaluator: see [docs/collaboration.md](docs/collaboration.md).
+To compare methods, everyone scores prediction files with the same benchmark and evaluator: see [docs/collaboration.md](docs/collaboration.md) for the rules and [docs/evaluation.md](docs/evaluation.md) for how to score a method (command-line script or a cell to paste into a notebook).
 
 ## Project structure
 

@@ -135,3 +135,44 @@ def test_redocred_prepare_and_evaluate(tiny_redocred):
     bad = subprocess.run([sys.executable, os.path.abspath(os.path.join(ROOT, "scripts/evaluate.py")), "results/r"],
                          cwd=work, capture_output=True, text=True)
     assert bad.returncode != 0 and "not in subset" in bad.stderr
+
+
+def test_eval_cell_matches_script(tiny_redocred):
+    """notebooks/redocred_eval_cell.py (pasted into notebooks) must give the same scores as scripts/evaluate.py."""
+    from kg_extraction.data.redocred import prepare_redocred
+    work = tiny_redocred
+    cwd = os.getcwd()
+    os.chdir(work)
+    try:
+        prepare_redocred()
+    finally:
+        os.chdir(cwd)
+    facts = [["100", 0, "P551", 1], ["100", 2, "P159", 1], ["101", 0, "P551", 1], ["101", 0, "P159", 2]]
+    clusters = [["100", 0, 1, "a"], ["100", 2, 1, "b"], ["101", 0, 1, "a"], ["101", 2, 1, "a"]]
+    run = work / "results/r"
+    run.mkdir(parents=True)
+    (run / "card.json").write_text(json.dumps({
+        "run": "r", "author": "t", "method": "m", "supervision": "none",
+        "training_data": "none", "models": "none", "description": "d"}))
+    for name, header, rows in (("facts", ["doc_id", "h", "r", "t"], facts),
+                               ("clusters", ["doc_id", "h", "t", "cluster"], clusters)):
+        with open(run / f"redocred_dev_{name}.csv", "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(header)
+            w.writerows(rows)
+    out = subprocess.run([sys.executable, os.path.abspath(os.path.join(ROOT, "scripts/evaluate.py")), "results/r"],
+                         cwd=work, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    script = json.load(open(run / "scores.json"))[0]
+
+    os.chdir(work)
+    try:
+        ns = {}
+        exec(open(os.path.join(ROOT, "notebooks/redocred_eval_cell.py"), encoding="utf-8").read(), ns)
+        cell = ns["evaluate_redocred"]([tuple(x) for x in facts], "dev", clusters=clusters, verbose=False)
+    finally:
+        os.chdir(cwd)
+    shared = [k for k in script if k in cell and isinstance(cell[k], (int, float))]
+    assert len(shared) >= 20
+    for k in shared:
+        assert cell[k] == pytest.approx(script[k], abs=1e-4), k

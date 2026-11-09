@@ -114,6 +114,8 @@ reasonable proxy while iterating.
 python scripts/evaluate.py results/<run> --leaderboard report/leaderboard.csv
 ```
 
+For a version to paste into a notebook, see [evaluation.md](evaluation.md).
+
 The script checks that every benchmark id is predicted exactly once, scores each file, averages over seeds
 (mean ± std), writes `results/<run>/scores.json` and replaces that run's rows in the leaderboard.
 Commit `report/leaderboard.csv` together with the code of the method.
