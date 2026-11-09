@@ -4,3 +4,5 @@ pyyaml
 scikit-learn
 torch
 transformers
+pandas
+yellowbricknetworkx

@@ -1,20 +1,29 @@
 # Knowledge graph extraction from text
 
-Text mining project: recover labeled relations between known entities by clustering [PromptORE](https://arxiv.org/abs/2304.01209) embeddings, then assigning each cluster to a fixed list of relations that includes "no relation".
+Text mining project: build a knowledge graph from documents whose entities are known.
+
+**Branch `known-entities-v1`.** This branch does not follow the plan of `main`. It assumes the entities are given, with their mentions, types and Wikidata links, and only covers relation detection and graph construction. It is a first working version, with one method and no comparison with other methods. See [docs/known_entities_v1.md](docs/known_entities_v1.md).
 
 ## Pipeline
 
 ```text
-Documents with gold entities (Linked-Re-DocRED)
-  → candidate ordered entity pairs
-  → relation embeddings (PromptORE prompt, untrained BERT)
-  → clusters (k-means, no labels)
-  → cluster-to-relation mapping (train labels, dev threshold)
-  → predicted relations or "no relation"
-  → evaluation and comparison with a linear classifier
+Documents with known entities (Linked-Re-DocRED)
+  → document encoding, once per document (frozen BERT, mentions wrapped in markers)
+  → relation classifier over every ordered entity pair (ATLOP-style head, trained on train)
+  → document facts (head, relation, tail) with a score
+  → corpus graph: nodes merged on Wikidata items, edges merged across documents
+  → relation metrics and graph metrics
 ```
 
-See [docs/project_plan.md](docs/project_plan.md) for the design decisions, evaluation and work plan, and [docs/personal_researches.md](docs/personal_researches.md) for the dataset selection.
+### Run
+
+```bash
+PYTHONPATH=src python scripts/train_relation_model.py
+PYTHONPATH=src python scripts/build_graph.py --split dev
+PYTHONPATH=src python scripts/build_graph.py --split test
+```
+
+The first script encodes train and dev once, caches the features in `data/processed/features/`, trains the classifier and keeps the epoch with the best dev F1. The second writes the predictions, the graph (JSON and GraphML) and a report to `results/known_entities/`.
 
 ## Project structure
 
@@ -32,7 +41,8 @@ See [docs/project_plan.md](docs/project_plan.md) for the design decisions, evalu
 ├── src/kg_extraction/
 │   ├── data/             Dataset loading
 │   ├── pairs/            Candidate entity pairs
-│   ├── relations/        Relation embeddings and clustering
+│   ├── relations/        Document encoder and relation classifier
+│   ├── graph/            Corpus graph assembly
 │   ├── mapping/          Cluster-to-relation assignment
 │   ├── baselines/        Comparison methods
 │   └── evaluation/       Metrics and error analysis
