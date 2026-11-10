@@ -34,7 +34,7 @@ The first script encodes train and dev once, caches the features in `data/proces
 ├── data/
 │   ├── raw/              Downloaded datasets (not versioned)
 │   └── processed/        Benchmark files, embeddings and models (not versioned)
-├── docs/                 Subject, plan, dataset selection and evaluation rules
+├── docs/                 Plan, methods, dataset selection and evaluation rules
 ├── external/             Original PromptORE and Linked-DocRED code (not versioned)
 ├── notebooks/            Notebook version of the shared evaluator
 ├── report/               Leaderboard, final report and figures
