@@ -13,9 +13,20 @@ Documents with known entities (Linked-Re-DocRED): mentions, types, coreference, 
   → shared evaluation of the facts and of the graph
 ```
 
-See [docs/project_plan.md](docs/project_plan.md) for the plan, methods and evaluation, and [docs/personal_researches.md](docs/personal_researches.md) for the dataset selection. The first working version of the methods is on the branch `known-entities-v1`.
+See [docs/project_plan.md](docs/project_plan.md) for the plan, methods and evaluation, [docs/known_entities_v1.md](docs/known_entities_v1.md) for the first version of the methods, and [docs/personal_researches.md](docs/personal_researches.md) for the dataset selection.
 
 Every method is scored with the same benchmark and evaluator: see [docs/collaboration.md](docs/collaboration.md) for the rules and [docs/evaluation.md](docs/evaluation.md) for how to score a method (command-line script or a cell to paste into a notebook).
+
+### Run
+
+```bash
+PYTHONPATH=src python scripts/train_relation_model.py
+PYTHONPATH=src python scripts/build_graph.py --split dev
+PYTHONPATH=src python scripts/build_graph.py --split test
+PYTHONPATH=src python scripts/compare_methods.py
+```
+
+The first script encodes train and dev once, caches the features in `data/processed/features/`, trains the classifier and keeps the epoch with the best dev F1. The second writes the predictions, the graph (JSON and GraphML) and a report to `results/known_entities/`. The third scores the two PromptORE methods on the same splits.
 
 ## Project structure
 
@@ -23,17 +34,18 @@ Every method is scored with the same benchmark and evaluator: see [docs/collabor
 ├── data/
 │   ├── raw/              Downloaded datasets (not versioned)
 │   └── processed/        Benchmark files, embeddings and models (not versioned)
-├── docs/                 Subject, plan, dataset selection and evaluation rules
+├── docs/                 Plan, methods, dataset selection and evaluation rules
 ├── external/             Original PromptORE and Linked-DocRED code (not versioned)
 ├── notebooks/            Notebook version of the shared evaluator
 ├── report/               Leaderboard, final report and figures
 ├── results/              Predictions and scores of each run (not versioned)
-├── scripts/              Benchmark preparation, evaluation and baselines
+├── scripts/              Benchmark preparation, evaluation, training and graph building
 ├── src/kg_extraction/
 │   ├── data/             Dataset loading and benchmark subsets
 │   ├── pairs/            Candidate entity pairs
-│   ├── relations/        Relation methods
-│   └── evaluation/       Shared metrics
+│   ├── relations/        Relation methods: PromptORE and the ATLOP-style classifier
+│   ├── graph/            Corpus graph assembly
+│   └── evaluation/       Shared metrics, relation and graph metrics
 └── tests/                Unit tests
 ```
 
@@ -59,5 +71,5 @@ Data files are not stored in this repository. Download them into `data/raw/`:
 
 ## Status
 
-- Shared benchmark, evaluator and type-pair baseline: on `main`.
-- PromptORE + clusters, PromptORE + classifier, ATLOP-style classifier and graph construction: on the branch `known-entities-v1`. Test F1 57.76 for the ATLOP-style classifier, 50.45 and 46.37 for the two PromptORE methods.
+- Shared benchmark, evaluator and type-pair baseline.
+- PromptORE + clusters, PromptORE + classifier, ATLOP-style classifier and graph construction. Test F1 57.76 for the ATLOP-style classifier, 50.45 and 46.37 for the two PromptORE methods, measured with the metrics of `evaluation/relations.py`; they still have to be scored with the shared evaluator.
