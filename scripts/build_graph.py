@@ -33,7 +33,7 @@ def with_predictions(docs, facts):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", default="dev", choices=("dev", "test"))
-    parser.add_argument("--data-dir", default="data/raw/linked-re-docred")
+    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
     parser.add_argument("--features-dir", default="data/processed/features")
     parser.add_argument("--model", default="data/processed/models/relation_model.pt")
     parser.add_argument("--output-dir", default="results/known_entities")

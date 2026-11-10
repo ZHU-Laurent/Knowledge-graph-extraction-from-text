@@ -1,8 +1,8 @@
 # Known entities v1: relation detection and graph construction
 
-**Branch:** `known-entities-v1`. **Status:** first working version, compared with two PromptORE methods. Test: relation F1 57.76, graph F1 59.18 (section 6). Comparison in section 7.
+**Origin:** branch `known-entities-v1`. **Status:** first working version, compared with two PromptORE methods. Test: relation F1 57.76, graph F1 59.18 (section 6). Comparison in section 7.
 
-This branch does not follow the plan of `main` ([project_plan.md](project_plan.md)). It assumes that the entities of each document are known, and builds only two things: the detection of relations between these entities, and a knowledge graph of the whole corpus. Its main method is an ATLOP-style classifier. Section 7 compares it with two methods built on PromptORE, the baseline paper of the project.
+This is the first version of the methods of the project plan ([project_plan.md](project_plan.md)). It assumes that the entities of each document are known, and builds only two things: the detection of relations between these entities, and a knowledge graph of the whole corpus. Its main method is an ATLOP-style classifier. Section 7 compares it with two methods built on PromptORE, the baseline paper of the project.
 
 This document explains what happens at each step: dataset, processing, training, evaluation and graph construction.
 

@@ -19,7 +19,7 @@ from kg_extraction.relations.pair_classifier import (
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", default="data/raw/linked-re-docred")
+    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
     parser.add_argument("--features-dir", default="data/processed/features")
     parser.add_argument("--output", default="data/processed/models/relation_model.pt")
     parser.add_argument("--report", default="results/known_entities/train_report.json")

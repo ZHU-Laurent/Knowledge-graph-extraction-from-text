@@ -1,8 +1,7 @@
+networkx
 numpy
+pandas
 pytest
-pyyaml
 scikit-learn
 torch
 transformers
-pandas
-yellowbricknetworkx

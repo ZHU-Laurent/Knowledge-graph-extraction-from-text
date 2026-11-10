@@ -76,7 +76,7 @@ def thresholded(data, docs, scores, relations):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", default="data/raw/linked-re-docred")
+    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
     parser.add_argument("--features-dir", default="data/processed/features")
     parser.add_argument("--embeddings-dir", default="data/processed/embeddings")
     parser.add_argument("--atlop-model", default="data/processed/models/relation_model.pt")
