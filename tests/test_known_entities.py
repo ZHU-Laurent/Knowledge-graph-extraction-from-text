@@ -116,3 +116,57 @@ def test_typing_scores_ignore_unrelated_pairs(docs):
     scores = typing_scores(docs, predicted)
     assert scores["typing_precision"] == 50.0
     assert scores["typing_recall"] == 50.0
+
+
+def test_doc_model_scores_every_pair_with_each_option(docs):
+    torch = pytest.importorskip("torch")
+    from kg_extraction.relations.doc_model import (
+        DocRelationModel, adaptive_focal_loss, predict_scores, prepare_document)
+
+    torch.manual_seed(0)
+    features = {"states": torch.randn(12, 16).half(), "attention": torch.rand(3, 12).half(),
+                "positions": [[0], [5], [8]]}
+    relations = ["P19", "P569"]
+    item = prepare_document(docs[0], features, ["LOC", "PER", "TIME"], relations)
+    assert item["labels"].shape == (6, 3)
+    assert item["distances"].tolist() == [0] * 6
+    plain = DocRelationModel(2, hidden=16, n_types=3, embedding=16, block=4)
+    full = DocRelationModel(2, hidden=16, n_types=3, token_layers=1, pair_layers=1,
+                            pair_features=True, embedding=16, block=4, pair_width=8)
+    for model in (plain, full):
+        logits = model(item)
+        assert logits.shape == (6, 3)
+        adaptive_focal_loss(logits, item["labels"].float()).backward()
+    facts = predict_scores(plain, [item], docs[:1], relations, min_score=0.0)
+    assert len(facts) == 12 and all(0 <= score <= 1 for score in facts.values())
+
+
+def test_doc_model_trains_the_last_encoder_layers(docs):
+    torch = pytest.importorskip("torch")
+    transformers = pytest.importorskip("transformers")
+    from kg_extraction.relations.doc_model import DocRelationModel, prepare_document
+
+    torch.manual_seed(0)
+    config = transformers.BertConfig(hidden_size=16, num_hidden_layers=2, num_attention_heads=2,
+                                     intermediate_size=32, attn_implementation="eager")
+    layers = transformers.BertModel(config).encoder.layer
+    # Two overlapping windows over 12 tokens, each with its [CLS] and [SEP] states.
+    features = {"lower": [torch.randn(10, 16).half(), torch.randn(10, 16).half()],
+                "windows": [(0, 8), (4, 12)], "length": 12, "positions": [[0], [5], [8]]}
+    item = prepare_document(docs[0], features, ["LOC", "PER", "TIME"], ["P19", "P569"])
+    model = DocRelationModel(2, hidden=16, n_types=3, embedding=16, block=4, top_layers=layers)
+    states, attention = model.encoder(item)
+    assert states.shape == (12, 16) and attention.shape == (3, 12)
+    assert torch.allclose(attention.sum(1), torch.ones(3), atol=1e-4)
+    model(item).sum().backward()
+    assert layers[0].output.dense.weight.grad.abs().sum() > 0
+
+
+def test_best_threshold_keeps_the_facts_that_maximize_f1():
+    pytest.importorskip("torch")
+    from kg_extraction.relations.doc_model import best_threshold
+
+    facts = {(0, 0, 1, "P19"): 0.9, (0, 0, 2, "P569"): 0.6, (0, 1, 2, "P17"): 0.4,
+             (0, 2, 1, "P17"): 0.1}
+    gold = {(0, 0, 1, "P19"), (0, 0, 2, "P569")}
+    assert best_threshold(facts, gold) == (0.6, 100.0)

@@ -100,6 +100,24 @@ class RedocredGold:
     def same_sentence(self, doc_id, h, t):
         return same_sentence(self.docs[doc_id], h, t)
 
+    def in_train(self, fact, names):
+        """True if some mention pair of the fact's entities forms a train fact (`names`, see train_fact_names)."""
+        doc_id, h, r, t = fact
+        entities = self.docs[doc_id]["entities"]
+        return any((mh["name"], mt["name"], r) in names
+                   for mh in entities[h]["mentions"] for mt in entities[t]["mentions"])
+
+
+def train_fact_names(raw_dir=RAW_DIR):
+    """(head mention name, tail mention name, relation) of every train fact, for Ign F1 (DocRED)."""
+    names = set()
+    for d in load_split("train", raw_dir):
+        for r in d["relations"]:
+            for mh in d["entities"][r["h"]]["mentions"]:
+                for mt in d["entities"][r["t"]]["mentions"]:
+                    names.add((mh["name"], mt["name"], r["r"]))
+    return names
+
 
 def relation_buckets(raw_dir=RAW_DIR, n_frequent=10, rare_below=200):
     """frequent = 10 most common train relations, rare = fewer than 200 train facts, medium = the rest."""

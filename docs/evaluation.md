@@ -108,11 +108,34 @@ json.dump({"run": "my-run", "author": "...", "method": "...", "supervision": "su
            "training_data": "...", "models": "...", "description": "..."}, open("results/my-run/card.json", "w"))
 ```
 
+## Reading the leaderboard
+
+`report/leaderboard.csv` has every metric. `report/leaderboard.md`, written at the same time, shows only the metrics
+below, with one table per subset and the best F1 first. In the CSV the same metrics come first, in this order.
+
+| Tier | Metric | Question it answers |
+|---|---|---|
+| **1. Key, rank on these** | `micro_f1` | How many of the relations to find are found, and found right? Main score |
+| | `ign_f1` | Same, without the facts already seen in train. Guards against memorizing, and is the score published DocRED papers report next to F1 |
+| 2. Diagnosis | `micro_p`, `micro_r` | Are the errors false facts or missed facts? |
+| | `detect_f1` | Does the method find which pairs are related? |
+| | `typing_f1` | On related pairs it found, does it choose the right relation? |
+| | `macro_f1` | Does it work on every relation, rare ones included? |
+| 3. Analysis | the other columns | Evidence-only facts, intra / inter sentence, frequent / medium / rare relations, clustering |
+
+Read tier 1 to compare methods, then tier 2 to see why one method is ahead. Make every choice on `dev` (or
+`dev_debug` while iterating) and report `test` once per method, with frozen settings.
+
 ## Metrics
 
 | Key | Meaning |
 |---|---|
 | `micro_p`, `micro_r`, `micro_f1` | facts `(doc, h, r, t)` against all gold facts. **Main score** |
+| `ign_p`, `ign_f1` | Ign F1 of DocRED: correct facts whose head mention name, tail mention name and relation already form a train fact are removed from the hits and from the predictions. Recall is unchanged |
+| `typing_p`, `typing_r`, `typing_f1` | only the pairs related in gold and predicted related: is the relation right? Missed and false pairs are detection errors, not typing errors |
+| `f1_intra_sentence`, `f1_inter_sentence` | F1 on pairs that share a sentence / do not |
+| `micro_f1_ci_low`, `micro_f1_ci_high` | 95% interval of `micro_f1`, from 1,000 resamples of the documents (same draws in both versions) |
+| `graph_p`, `graph_r`, `graph_f1`, `graph_precision_*` | corpus graph metrics, **script only** (they reuse `src/kg_extraction/graph`). See [collaboration.md](collaboration.md#what-the-evaluator-reports-for-linked-re-docred) |
 | `macro_f1` | F1 averaged over the relation types present in the gold of the subset |
 | `macro_f1_frequent / _medium / _rare` | macro F1 on the 10 most frequent train relations / the others / relations with fewer than 200 train facts |
 | `evid_p`, `evid_r`, `evid_f1` | only gold facts annotated with evidence sentences. Facts without evidence (often inferred, not written) count neither as hits nor as errors. Closest to "explicit relations" |

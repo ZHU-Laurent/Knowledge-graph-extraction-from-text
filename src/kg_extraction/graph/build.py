@@ -26,7 +26,7 @@ def node_key(doc, entity):
     if entity["type"] in LITERAL_TYPES:
         names = [normalize_literal(mention["name"]) for mention in entity["mentions"]]
         return f"{entity['type'].lower()}:{max(names, key=len)}"
-    return f"doc:{doc['title']}#{entity['id']}"
+    return f"doc:{doc['title']}#{entity.get('id')}"
 
 
 def build_graph(docs, facts, relation_names=None):
@@ -35,7 +35,9 @@ def build_graph(docs, facts, relation_names=None):
     facts maps (document index, head id, tail id, relation code) to a score in [0, 1].
     """
     relation_names = relation_names or {}
-    keys = [{entity["id"]: node_key(doc, entity) for entity in doc["entities"]} for doc in docs]
+    # Entity ids are their positions in the document (Linked-DocRED also stores them as "id").
+    keys = [{position: node_key(doc, {"id": position, **entity})
+             for position, entity in enumerate(doc["entities"])} for doc in docs]
 
     # Within a document, two entities can share a node: keep the best score of the fact.
     support = defaultdict(dict)
@@ -61,8 +63,8 @@ def build_graph(docs, facts, relation_names=None):
     used = {edge["head"] for edge in edges} | {edge["tail"] for edge in edges}
     names, types, titles = defaultdict(Counter), defaultdict(Counter), defaultdict(set)
     for index, doc in enumerate(docs):
-        for entity in doc["entities"]:
-            key = keys[index][entity["id"]]
+        for position, entity in enumerate(doc["entities"]):
+            key = keys[index][position]
             if key not in used:
                 continue
             names[key].update(mention["name"] for mention in entity["mentions"])

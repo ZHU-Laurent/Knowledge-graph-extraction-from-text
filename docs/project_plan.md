@@ -109,15 +109,16 @@ Published zero-shot results are weak, about 18 F1 on the Re-DocRED test set (sec
 
 | Metric | Definition | In the shared evaluator |
 |---|---|---|
-| **F1** | Micro precision, recall and F1 over predicted facts | Yes |
-| **Ign F1** | F1 that ignores facts whose names already form a fact in train, the standard companion to F1 in DocRED papers | **To add** |
+| **F1** | Micro precision, recall and F1 over predicted facts. Key metric | Yes |
+| **Ign F1** | F1 that ignores facts whose names already form a fact in train, the standard companion to F1 in DocRED papers. Key metric | Yes |
 | **Macro F1** | Mean F1 over relation types, and by frequent, medium and rare relations | Yes |
-| **Intra / inter** | Pairs that share a sentence, and pairs that do not | Recall only, F1 to add |
+| **Intra / inter** | Pairs that share a sentence, and pairs that do not | Yes |
 | **Detection F1** | F1 of the decision "this pair has a relation" | Yes |
-| **Typing F1** | F1 on pairs that are related and detected | **To add** |
+| **Typing F1** | F1 on pairs that are related and detected | Yes |
 | **Evidence F1** | F1 on facts whose annotation lists evidence sentences | Yes |
 | **B³, V-measure, ARI** | Clustering metrics of the PromptORE paper | Yes |
-| **Graph metrics** | Graph precision, recall and F1 over distinct triples, precision of the N most confident edges, precision by number of supporting documents | **To add** |
+| **Graph metrics** | Graph precision, recall and F1 over distinct triples, precision of the N most confident edges, precision by number of supporting documents | Yes, script only |
+| **95% interval, paired test** | Bootstrap over documents: interval of F1 for each run, and a paired test between two runs (`scripts/compare_runs.py`) | Yes |
 
 ### Rules
 
@@ -157,29 +158,37 @@ Check the DREEAM numbers and the encoder of Table 6 in the PDFs before the repor
 
 - PromptORE reproduced on FewRel PubMed, within 1.3 points of the paper.
 - Shared benchmark and evaluator, with the type-pair baseline (dev F1 18.8).
-- On `known-entities-v1`, a first version of M1, M2 and M3 and of the graph. Results on test, one seed:
+- A first version of M1, M2 and M3 and of the graph, scored with the shared evaluator (`report/leaderboard.md`). Results on test, mean ± std over seeds 0 to 2 (M0 is deterministic). These test scores are provisional: the final test run comes after the choices on dev.
 
-| Method | F1 | Ign F1 | Detection F1 | Typing F1 | Graph F1 |
-|---|---|---|---|---|---|
-| M3, ATLOP-style, frozen encoder | 57.76 | 56.75 | 60.11 | 92.25 | 59.18 |
-| M2, PromptORE + classifier | 50.45 | 48.09 | 53.25 | 89.02 | 50.72 |
-| M1, PromptORE + clusters (k = 400) | 46.37 | 44.10 | 51.21 | 84.14 | 46.48 |
+| Method | Run | **F1** | **Ign F1** | P | R | Detection F1 | Typing F1 | Macro F1 |
+|---|---|---|---|---|---|---|---|---|
+| M3, ATLOP-style, frozen encoder | `atlop-frozen` | **57.70 ± 0.10** | **56.76** | 74.35 | 47.18 | 60.14 | 92.17 | 36.72 |
+| M2, PromptORE + classifier | `promptore-classifier` | **50.41 ± 0.14** | **48.07** | 49.10 | 51.79 | 53.21 | 88.91 | 30.58 |
+| M1, PromptORE + clusters (k = 400) | `promptore-clusters` | **45.93 ± 0.38** | **43.56** | 44.95 | 47.02 | 51.29 | 83.19 | 20.97 |
+| M0, type-pair baseline | `baseline-typepair` | **18.86** | **17.80** | 17.45 | 20.52 | 28.14 | 61.98 | 1.71 |
 
-Typing F1 is between 84 and 92 while detection F1 is between 51 and 60: detection is the hard part for every method.
+F1 and Ign F1 are the key metrics, the others are for diagnosis (see [evaluation.md](evaluation.md#reading-the-leaderboard)). The run folders are written by `scripts/compare_methods.py` and `scripts/baseline_typepair.py`. The shared evaluator gives the same F1, Ign F1 and typing F1 as the branch metrics (`evaluation/relations.py`).
+
+Graph F1 (test, shared evaluator): 59.20, 50.70, 46.01 and 19.42 for M3, M2, M1 and M0. Error analysis and the plan to fix the weaknesses: [analysis_v1.md](analysis_v1.md).
+
+Typing F1 is between 84 and 92 while detection F1 is between 51 and 60: detection is the hard part for every method. M3 is the most precise (73.7) but misses more pairs that do not share a sentence; M2 has the best recall.
 
 ### Next steps
 
 | # | Step | Depends on |
 |---|---|---|
-| 1 | Merge `known-entities-v1` into `main` through a pull request, and score its methods with the shared evaluator | |
-| 2 | Add Ign F1, typing F1, intra / inter F1 and the graph metrics to the shared evaluator | |
-| 3 | Finish the FewRel reproduction on NYT | |
-| 4 | Fine-tune the encoder of M3, on a GPU | 1 |
-| 5 | Experiment B, label efficiency | 1, 2 |
-| 6 | Experiments C and D | 1, 2 |
-| 7 | Run 3 seeds per method, then test once | 4 to 6 |
-| 8 | Optional: label-free cluster naming, DREEAM, LLM | 1 |
-| 9 | Report and slides | All above |
+| 1 | Done: `known-entities-v1` merged into `main` (PR #2), methods scored with the shared evaluator | |
+| 2 | Done: the shared evaluator has Ign F1, typing F1, intra / inter F1, graph metrics, several seeds, bootstrap intervals and a paired test (`scripts/compare_runs.py`); test rows are provisional until a card says `test_status: final` | |
+| 3 | Done: first review and error analysis, [analysis_v1.md](analysis_v1.md). Detection is the bottleneck, M3 under-predicts, rare relations are lost | 1, 2 |
+| 4 | Done: document-level model on frozen features with a threshold tuned on dev, pair features, token layers and pair layers; gain of each part in [analysis_v2.md](analysis_v2.md). Test F1 66.0 ± 0.1 for one model (M3 of v1: 57.7) | 3 |
+| 5 | Done without GPU: the last 4 layers of the encoder are trained from cached lower states (`--tune-layers`), test F1 73.5 for one model and 75.0 for the final ensemble (provisional), see [analysis_v2.md](analysis_v2.md). Still open: full fine-tuning on a GPU, more layers, a larger encoder | 3 |
+| 6 | Done: ensembles of seeds, encoders and M2 (test F1 70.4, provisional); PromptORE typing on the pairs of the document model (M2: dev 49.2 to 60.9) | 4 |
+| 7 | Rare relations: the adaptive focal loss did not help (dev −0.4); still open: class-balanced loss, soft cluster naming in M1 | 5 |
+| 8 | Finish the FewRel reproduction on NYT | |
+| 9 | Experiment B, label efficiency, and the rest of experiments C and D | 5 to 7 |
+| 10 | 3 seeds per method (done for v1: std 0.1 to 0.5 point), then test once with `test_status: final` | 4 to 9 |
+| 11 | Optional: DREEAM, LLM | 5 |
+| 12 | Report and slides | All above |
 
 ## 9. Risks
 

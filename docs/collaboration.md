@@ -56,8 +56,8 @@ Put everything for one run in `results/<run>/`. The folder is not versioned.
 |---|---|---|
 | `card.json` | see below | required |
 | `fewrel_<nyt\|pubmed>_<setting>_seed<N>.csv` | `id,cluster` | one row per benchmark id. `setting` is `k_true` (k = 25 / 10 is given) or `k_est` (k estimated without labels); other names are allowed for extra variants |
-| `redocred_<dev_debug\|dev\|test>_facts.csv` | `doc_id,h,r,t` | `doc_id` and `h`/`t` as in the pairs file, `r` = Wikidata code (P17, …). A pair may have several rows; pairs without a row are "no relation" |
-| `redocred_<dev_debug\|dev\|test>_clusters.csv` | `doc_id,h,t,cluster` | optional, for B³/V/ARI |
+| `redocred_<dev_debug\|dev\|test>_facts[_seed<N>].csv` | `doc_id,h,r,t[,score]` | `doc_id` and `h`/`t` as in the pairs file, `r` = Wikidata code (P17, …). A pair may have several rows; pairs without a row are "no relation". One file per seed with `_seed<N>`; the evaluator reports mean ± std. The optional `score` (confidence in [0, 1]) ranks the graph edges for precision at N |
+| `redocred_<dev_debug\|dev\|test>_clusters[_seed<N>].csv` | `doc_id,h,t,cluster` | optional, for B³/V/ARI |
 
 `card.json` describes the run, so the leaderboard says how each number was obtained:
 
@@ -81,11 +81,20 @@ Put everything for one run in `results/<run>/`. The folder is not versioned.
 
 Numbers from different supervision levels go in separate rows of the report's tables and are never ranked together.
 
+Optional: `"test_status": "final"` marks the single test run of a method, made after every choice on dev. Without
+it, test rows are shown as `provisional` in the leaderboard.
+
 ## What the evaluator reports for Linked-Re-DocRED
 
 | Column | Meaning |
 |---|---|
 | `micro_p`, `micro_r`, `micro_f1` | facts `(doc, h, r, t)`, all gold facts. Main score |
+| `ign_p`, `ign_f1` | Ign F1 of DocRED: hits already seen as a train fact (same mention names and relation) are not counted. Second key score |
+| `typing_p`, `typing_r`, `typing_f1` | on pairs related in gold and predicted related, is the relation right? |
+| `f1_intra_sentence`, `f1_inter_sentence` | F1 on pairs that share a sentence / do not |
+| `micro_f1_ci_low`, `micro_f1_ci_high` | 95% bootstrap interval of `micro_f1`, resampling documents |
+| `graph_p`, `graph_r`, `graph_f1` | facts merged into one corpus graph (entities merged on their Wikidata item, dates and numbers on their text), against the gold graph built the same way. Script only |
+| `graph_precision_at_<N>`, `graph_precision_support_<1\|2\|3+>` | precision of the N most confident edges (needs a `score` column), and of edges stated in 1, 2 or 3+ documents. Script only |
 | `macro_f1` | F1 averaged over the gold relation types |
 | `macro_f1_frequent / _medium / _rare` | macro F1 on the 10 most frequent train relations / the rest / relations with fewer than 200 train facts |
 | `evid_p`, `evid_r`, `evid_f1` | only the gold facts annotated with evidence sentences (43% of dev). Re-DocRED added many facts without evidence, often inferred rather than written; predicting those is neither rewarded nor penalised here. Closest to "explicit relations" in the subject, but the evidence field is itself incomplete |
@@ -93,7 +102,8 @@ Numbers from different supervision levels go in separate rows of the report's ta
 | `detect_p`, `detect_r`, `detect_f1` | is the pair related at all? (relation type ignored) |
 | `cl_b3_f1`, `cl_v_f1`, `cl_ari`, … | clustering metrics on related pairs with a single gold label, if a clusters file is given |
 
-`results/<run>/redocred_<subset>_per_relation.csv` gives P/R/F1 for each relation.
+`results/<run>/redocred_<subset>_per_relation.csv` gives P/R/F1 for each relation. Which metrics to look at
+first: [evaluation.md](evaluation.md#reading-the-leaderboard).
 
 ### Reference: `scripts/baseline_typepair.py`
 
@@ -118,7 +128,18 @@ For a version to paste into a notebook, see [evaluation.md](evaluation.md).
 
 The script checks that every benchmark id is predicted exactly once, scores each file, averages over seeds
 (mean ± std), writes `results/<run>/scores.json` and replaces that run's rows in the leaderboard.
-Commit `report/leaderboard.csv` together with the code of the method.
+Commit `report/leaderboard.csv` and `report/leaderboard.md` together with the code of the method.
+
+Each Linked-Re-DocRED row also has a 95% interval of F1 (`micro_f1_ci_low`, `micro_f1_ci_high`), from 1,000
+resamples of the documents. To check that one method really beats another, on the same documents:
+
+```bash
+python scripts/compare_runs.py results/<run A> results/<run B> --subset dev
+```
+
+It prints the F1 gap, its 95% interval and a p-value (paired bootstrap). For an error analysis on dev
+(detection or typing errors, distance, entity types, rare relations, calibration):
+`python scripts/analyze_errors.py results/<run> ... --subset dev`.
 
 ## Shared rules
 
