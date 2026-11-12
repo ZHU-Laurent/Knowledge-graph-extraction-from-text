@@ -3,7 +3,6 @@
 A run folder holds a card.json and prediction files named by convention (see docs/collaboration.md):
 
     results/<run>/card.json
-    results/<run>/fewrel_<nyt|pubmed>_<k_true|k_est|other>_seed<N>.csv     columns: id,cluster
     results/<run>/redocred_<dev|dev_debug|test>_facts.csv                  columns: doc_id,h,r,t
     results/<run>/redocred_<dev|dev_debug|test>_clusters.csv  (optional)   columns: doc_id,h,t,cluster
 
@@ -23,7 +22,6 @@ from collections import defaultdict
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from kg_extraction.data.benchmark import read_fewrel_gold  # noqa: E402
 from kg_extraction.data.redocred import RedocredGold, relation_buckets, train_fact_names  # noqa: E402
 from kg_extraction.evaluation.graph import graph_scores  # noqa: E402
 from kg_extraction.evaluation.metrics import (NO_RELATION, bootstrap_f1, clustering_scores,  # noqa: E402
@@ -42,7 +40,6 @@ LABELS = {"micro_f1": "F1", "ign_f1": "Ign F1", "micro_p": "P", "micro_r": "R",
 SUPERVISION = {"none", "labels_for_mapping", "supervised"}
 # Optional card field. "final" only for the single test run of a method, after every choice was made on dev.
 TEST_STATUS = {"provisional", "final"}
-BENCH = "data/processed/benchmark"
 REDOCRED = "data/raw/Linked-Re-DocRED"
 
 
@@ -61,25 +58,8 @@ def check_card(card):
         sys.exit(f"card.json test_status must be one of {sorted(TEST_STATUS)}")
 
 
-def score_fewrel(run_dir):
-    groups = defaultdict(list)                      # (dataset, setting) -> [scores per seed]
-    for path in sorted(glob.glob(os.path.join(run_dir, "fewrel_*_seed*.csv"))):
-        m = re.match(r"fewrel_(nyt|pubmed)_(.+)_seed(\d+)\.csv$", os.path.basename(path))
-        if not m:
-            sys.exit(f"bad file name: {path}")
-        dataset, setting, _ = m.groups()
-        gold = read_fewrel_gold(os.path.join(BENCH, f"{dataset}_gold.csv"))
-        pred = {r["id"]: r["cluster"] for r in read_csv(path)}
-        if set(pred) != set(gold):
-            sys.exit(f"{path}: ids differ from the benchmark "
-                     f"({len(set(gold) - set(pred))} missing, {len(set(pred) - set(gold))} unknown)")
-        ids = sorted(gold)
-        groups[(dataset, setting)].append(clustering_scores([gold[i] for i in ids], [pred[i] for i in ids]))
-    return groups
-
-
 def score_redocred(run_dir):
-    """Main track. Besides overall micro/macro scores it reports:
+    """Besides overall micro/macro scores it reports:
     - ign_*      Ign precision and F1 (DocRED): correct facts already seen in train are not counted
     - evid_*     facts whose gold annotation lists evidence sentences only (Re-DocRED added many facts
                  without evidence; predictions of those facts are then neither hits nor errors)
@@ -187,7 +167,7 @@ def summarize(groups):
         for key in runs[0]:
             vals = np.array([r[key] for r in runs], dtype=float)
             row[key] = round(float(vals.mean()), 4)
-            if len(runs) > 1 and key in ("b3_f1", "v_f1", "ari", "graph_f1", *KEY_METRICS, *DIAGNOSTIC_METRICS):
+            if len(runs) > 1 and key in ("graph_f1", *KEY_METRICS, *DIAGNOSTIC_METRICS):
                 row[key + "_std"] = round(float(vals.std(ddof=1)), 4)
         rows.append(row)
     return rows
@@ -201,7 +181,7 @@ def main():
 
     card = json.load(open(os.path.join(args.run_dir, "card.json"), encoding="utf-8"))
     check_card(card)
-    rows = summarize({**score_fewrel(args.run_dir), **score_redocred(args.run_dir)})
+    rows = summarize(score_redocred(args.run_dir))
     if not rows:
         sys.exit("no prediction files found")
     for r in rows:
@@ -211,9 +191,8 @@ def main():
     json.dump(rows, open(os.path.join(args.run_dir, "scores.json"), "w"), indent=1)
 
     for r in rows:
-        main_keys = KEY_METRICS + DIAGNOSTIC_METRICS if "micro_f1" in r else ["b3_f1", "v_f1", "ari"]
         shown = "  ".join(f"{k}={r[k]:.3f}" + (f"±{r[k + '_std']:.3f}" if k + "_std" in r else "")
-                          for k in main_keys)
+                          for k in KEY_METRICS + DIAGNOSTIC_METRICS)
         print(f"{r['dataset']:15s} {r['setting']:8s} seeds={r['n_seeds']}  {shown}")
 
     if args.leaderboard:

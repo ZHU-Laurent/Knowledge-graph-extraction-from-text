@@ -1,11 +1,12 @@
 # Dataset selection
 
-## Selected datasets
+## Selected dataset
+
+Since 2026-11-12 the project uses Linked-Re-DocRED only, so that every method is scored on the same documents.
 
 | Role | Dataset | Content | Access | License |
 |---|---|---|---|---|
 | Main dataset | Linked-Re-DocRED | Wikipedia documents with gold entities, coreference, entity links, 96 relations and a labeled test set | [Linked-DocRED repository](https://github.com/alteca/Linked-DocRED/tree/main/Linked-Re-DocRED) | GPL-3.0 |
-| Reproduce the PromptORE paper | [FewRel](https://github.com/thunlp/FewRel) | Wikipedia, 56,000 instances, 80 relations. Variants: FewRel NYT (2,500 instances, 25 relations) and FewRel PubMed (1,000 instances, 10 relations) | GitHub | MIT |
 
 ## Linked-DocRED or Linked-Re-DocRED
 
@@ -36,12 +37,9 @@ The largest relations in train are "located in the administrative territorial en
 
 Each document has a title, tokenized sentences, entities and relations. Each entity has an id, a type (`NUM`, `TIME`, `PER`, `ORG`, `LOC` or `MISC`), its mentions and an entity link. Each relation has a Wikidata code `r`, a head `h`, a tail `t` and evidence sentences.
 
-## Why FewRel alone is not enough
-
-FewRel annotates one entity pair per instance, has at most one instance per pair and has no "no relation" class. We only use it to check that we can reproduce the paper.
-
 ## Datasets set aside
 
+- **FewRel** (the PromptORE paper's data; variants NYT and PubMed): one entity pair per instance, at most one instance per pair and no "no relation" class. It served once to check our PromptORE implementation on the PubMed variant, and is no longer used.
 - **SciERC, FRAME, SciER:** useful for the earlier end-to-end pipeline or other domains, but not needed for the reduced scope. They can serve as an extension.
 - **Linked-DocRED:** its test set has no relation labels.
 - **CoNLL04:** too few relations for a meaningful clustering study.

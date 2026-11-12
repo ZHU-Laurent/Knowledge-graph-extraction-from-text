@@ -1,4 +1,4 @@
-"""Write the prediction files that scripts/evaluate.py scores."""
+"""Write and read the prediction files that scripts/evaluate.py scores."""
 import csv
 import json
 from pathlib import Path
@@ -26,3 +26,14 @@ def write_shared_run(directory, docs, facts, card, seed):
             writer.writerow(["doc_id", "h", "r", "t", "score"])
             writer.writerows(rows)
     (directory / "card.json").write_text(json.dumps(card, indent=1), encoding="utf-8")
+
+
+def read_run_facts(directory, subset, seed, docs):
+    """Return {(document index, head id, tail id, relation code): score} kept by a run.
+
+    docs are the documents of the split that the subset comes from.
+    """
+    index_of = {str(doc["id"]): index for index, doc in enumerate(docs)}
+    with open(Path(directory) / f"redocred_{subset}_facts_seed{seed}.csv", newline="") as file:
+        return {(index_of[row["doc_id"]], int(row["h"]), int(row["t"]), row["r"]):
+                float(row["score"]) for row in csv.DictReader(file)}

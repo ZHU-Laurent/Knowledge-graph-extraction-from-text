@@ -8,19 +8,16 @@ code and the same rules. Methods then only differ by their **prediction files**.
 Your method writes prediction files in the formats below. `scripts/evaluate.py` scores them and adds a row to
 `report/leaderboard.csv`. Nobody computes their own metrics for the report.
 
-## Two tracks
+## One dataset, one task
 
-| Track | Data | What a method predicts | Metrics | Role |
-|---|---|---|---|---|
-| **A. Clustering** | FewRel NYT (2,500 instances, 25 relations), FewRel PubMed (1,000, 10) | a cluster id for each instance | B³, V-measure, ARI | reproduce PromptORE (plan step 1), compare relation representations (BERT, LLM, …) |
-| **B. Main** | Linked-Re-DocRED, fixed subsets (below) | facts `(doc_id, h, r, t)`; no row means "no relation" | micro P/R/F1 and macro F1 on facts, with breakdowns (below) | the project's research question |
+Every method is scored on **Linked-Re-DocRED**, on fixed subsets (below). A method predicts facts `(doc_id, h, r, t)`; no row means "no relation". The metrics are micro P/R/F1 and macro F1 on facts, with breakdowns (below).
 
 ## Setup (once)
 
 ```bash
 # 1. download train_revised.json, dev_revised.json, test_revised.json from
 #    https://github.com/alteca/Linked-DocRED/tree/main/Linked-Re-DocRED into data/raw/Linked-Re-DocRED/
-# 2. build every benchmark file (FewRel is downloaded automatically)
+# 2. build every benchmark file
 python scripts/prepare_benchmark.py
 ```
 
@@ -28,8 +25,6 @@ Everything lands in `data/processed/benchmark/`:
 
 | File | Content |
 |---|---|
-| `{nyt,pubmed}.jsonl` | FewRel inputs with stable ids (`nyt-00000`, …): tokens and head/tail spans, **no labels** |
-| `{nyt,pubmed}_gold.csv` | FewRel labels, read only by the evaluator |
 | `redocred_<subset>_docs.jsonl` | one document per line: `doc_id`, `title`, `sents`, `entities` (type, longest-mention `name`, mentions, Wikidata id), **no relations** |
 | `redocred_<subset>_pairs.csv` | every ordered entity pair: `doc_id,h,t,h_type,t_type,same_sentence` |
 | `redocred_subsets.json` | document ids of each subset |
@@ -55,7 +50,6 @@ Put everything for one run in `results/<run>/`. The folder is not versioned.
 | File | Columns | Notes |
 |---|---|---|
 | `card.json` | see below | required |
-| `fewrel_<nyt\|pubmed>_<setting>_seed<N>.csv` | `id,cluster` | one row per benchmark id. `setting` is `k_true` (k = 25 / 10 is given) or `k_est` (k estimated without labels); other names are allowed for extra variants |
 | `redocred_<dev_debug\|dev\|test>_facts[_seed<N>].csv` | `doc_id,h,r,t[,score]` | `doc_id` and `h`/`t` as in the pairs file, `r` = Wikidata code (P17, …). A pair may have several rows; pairs without a row are "no relation". One file per seed with `_seed<N>`; the evaluator reports mean ± std. The optional `score` (confidence in [0, 1]) ranks the graph edges for precision at N |
 | `redocred_<dev_debug\|dev\|test>_clusters[_seed<N>].csv` | `doc_id,h,t,cluster` | optional, for B³/V/ARI |
 
@@ -126,7 +120,7 @@ python scripts/evaluate.py results/<run> --leaderboard report/leaderboard.csv
 
 For a version to paste into a notebook, see [evaluation.md](evaluation.md).
 
-The script checks that every benchmark id is predicted exactly once, scores each file, averages over seeds
+The script checks that every predicted document is in the subset, scores each file, averages over seeds
 (mean ± std), writes `results/<run>/scores.json` and replaces that run's rows in the leaderboard.
 Commit `report/leaderboard.csv` and `report/leaderboard.md` together with the code of the method.
 
@@ -144,7 +138,7 @@ It prints the F1 gap, its 95% interval and a p-value (paired bootstrap). For an 
 ## Shared rules
 
 1. **Same inputs.** Use the given entity spans and the official splits. Do not edit or filter the benchmark files.
-2. **Labels.** Track A methods never read `*_gold.csv`. In track B, train labels are allowed for `labels_for_mapping` and `supervised` runs. Every decision (k, thresholds, prompts) is made on **dev**. **Test** is scored once, at the end, by all of us together.
+2. **Labels.** Train labels are allowed for `labels_for_mapping` and `supervised` runs. Every decision (k, thresholds, prompts) is made on **dev**. **Test** is scored once, at the end, by all of us together.
 3. **Seeds.** Anything random (k-means, sampling) runs with seeds 0 to 4. The evaluator reports mean ± std.
 4. **k.** Report `k_true` and `k_est` separately. `k_est` must be chosen without labels.
 5. **LLMs and APIs.** Record the exact model name and date in `card.json`. Use temperature 0. Keep the raw answers, since API models change over time.

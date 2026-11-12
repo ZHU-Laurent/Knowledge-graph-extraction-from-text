@@ -12,12 +12,11 @@ __pycache__/
 # Data, models and generated results
 data/raw/*
 data/processed/*
-results/*
+/results
 models/
 external/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
-!results/.gitkeep
 
 # OS and editors
 .DS_Store

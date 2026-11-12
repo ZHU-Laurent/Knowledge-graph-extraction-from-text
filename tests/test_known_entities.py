@@ -170,3 +170,12 @@ def test_best_threshold_keeps_the_facts_that_maximize_f1():
              (0, 2, 1, "P17"): 0.1}
     gold = {(0, 0, 1, "P19"), (0, 0, 2, "P569")}
     assert best_threshold(facts, gold) == (0.6, 100.0)
+
+
+def test_read_run_facts_maps_document_ids_to_positions(tmp_path):
+    from kg_extraction.evaluation.runs import read_run_facts
+
+    (tmp_path / "redocred_dev_facts_seed0.csv").write_text(
+        "doc_id,h,r,t,score\n42,0,P19,2,0.9\n7,1,P17,0,0.25\n")
+    facts = read_run_facts(tmp_path, "dev", 0, [{"id": 7}, {"id": 42}])
+    assert facts == {(1, 0, 2, "P19"): 0.9, (0, 1, 0, "P17"): 0.25}
