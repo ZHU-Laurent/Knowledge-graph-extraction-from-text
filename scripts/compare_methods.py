@@ -10,6 +10,10 @@
 
 Both PromptORE methods take their fact threshold, and the clusters their k, from dev.
 Test is scored once, with the settings chosen on dev.
+
+Each method also gets a run folder for the shared evaluator (scripts/evaluate.py):
+results/<run>/card.json and redocred_<dev_debug|dev|test>_facts_seed<N>.csv, with a score column.
+--seed sets the unrelated train pairs and k-means of PromptORE; pass the ATLOP model trained with the same seed.
 """
 import argparse
 import json
@@ -21,6 +25,7 @@ import torch
 
 from kg_extraction.data.linked_docred import load_relation_names, load_split
 from kg_extraction.evaluation.graph import graph_scores, graph_summary
+from kg_extraction.evaluation.runs import write_shared_run
 from kg_extraction.evaluation.relations import (
     gold_facts, relation_scores, train_fact_names, typing_scores)
 from kg_extraction.graph.build import build_graph
@@ -33,6 +38,27 @@ from kg_extraction.relations.probe import (
     RelationProbe, best_threshold, facts_above, pair_instances, pair_list, sample_train_pairs)
 
 SPLITS = ("dev", "test")
+CARDS = {
+    "atlop": {
+        "run": "atlop-frozen", "method": "ATLOP-style classifier (M3)",
+        "supervision": "supervised", "training_data": "Linked-Re-DocRED train labels",
+        "models": "bert-base-cased (frozen)",
+        "description": "Document encoded once, logsumexp entity pooling, attention pair context, "
+                       "grouped bilinear head, adaptive threshold; epoch chosen on dev"},
+    "promptore_classifier": {
+        "run": "promptore-classifier", "method": "PromptORE [MASK] embeddings + classifier (M2)",
+        "supervision": "supervised", "training_data": "Linked-Re-DocRED train labels (sample)",
+        "models": "bert-base-uncased (frozen)",
+        "description": "Logistic detector x one logistic classifier per relation; "
+                       "fact threshold chosen on dev"},
+    "promptore_clusters": {
+        "run": "promptore-clusters", "method": "PromptORE [MASK] embeddings + k-means (M1)",
+        "supervision": "labels_for_mapping",
+        "training_data": "Linked-Re-DocRED train labels (detector and cluster naming)",
+        "models": "bert-base-uncased (frozen)",
+        "description": "Logistic detector x relation share of the pair's cluster; "
+                       "k and fact threshold chosen on dev"},
+}
 
 
 def atlop_facts(args, docs, relations):
@@ -54,8 +80,10 @@ def promptore_embeddings(args, docs, allowed):
     kept, negative_weight = sample_train_pairs(train_pairs, args.negatives_per_positive,
                                                args.seed)
     train_pairs = [train_pairs[index] for index in kept]
+    # The seed draws the unrelated train pairs, so each seed has its own cache.
+    sample_cache = "train_sample.npy" if args.seed == 0 else f"train_sample_seed{args.seed}.npy"
     data = {"train": (train_pairs, cached_embeddings(
-        directory / "train_sample.npy", pair_instances(docs["train"], train_pairs)))}
+        directory / sample_cache, pair_instances(docs["train"], train_pairs)))}
     for split in SPLITS:
         pairs = pair_list(docs[split], allowed)
         data[split] = (pairs, cached_embeddings(directory / f"{split}_isolated.npy",
@@ -82,6 +110,9 @@ def main():
     parser.add_argument("--atlop-model", default="data/processed/models/relation_model.pt")
     parser.add_argument("--probe", default="data/processed/models/promptore_probe.joblib")
     parser.add_argument("--output-dir", default="results/comparison")
+    parser.add_argument("--runs-dir", default="results",
+                        help="Parent folder of the run folders for the shared evaluator")
+    parser.add_argument("--author", default="ZHU-Laurent")
     parser.add_argument("--negatives-per-positive", type=int, default=3)
     parser.add_argument("--k-values", type=int, nargs="+", default=[100, 200, 400])
     parser.add_argument("--seed", type=int, default=0)
@@ -105,8 +136,15 @@ def main():
         probe = RelationProbe(relations).fit(train_embeddings, train_labels, negative_weight)
         Path(args.probe).parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(probe, args.probe)
-    methods["promptore_classifier"], threshold = thresholded(
-        data, docs, {split: probe.scores(data[split][1]) for split in SPLITS}, relations)
+    classifier_scores = {split: probe.scores(data[split][1]) for split in SPLITS}
+    methods["promptore_classifier"], threshold = thresholded(data, docs, classifier_scores,
+                                                             relations)
+    # Every fact above 0.02, for scripts/combine_runs.py.
+    run_dir = Path(args.runs_dir) / CARDS["promptore_classifier"]["run"]
+    run_dir.mkdir(parents=True, exist_ok=True)
+    for split in SPLITS:
+        torch.save(facts_above(data[split][0], classifier_scores[split], relations, 0.02),
+                   run_dir / f"scores_{split}_seed{args.seed}.pt")
     settings["promptore_classifier"] = {"threshold": threshold}
     print("promptore_classifier done", settings["promptore_classifier"], flush=True)
 
@@ -130,6 +168,10 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     report = {"settings": settings, "results": {}}
     for method, facts in methods.items():
+        card = {**CARDS[method], "author": args.author}
+        if method in settings:
+            card["description"] += f"; settings {settings[method]}"
+        write_shared_run(Path(args.runs_dir) / card["run"], docs, facts, card, args.seed)
         for split in SPLITS:
             graph = build_graph(docs[split], facts[split], relation_names)
             report["results"][f"{method}/{split}"] = {

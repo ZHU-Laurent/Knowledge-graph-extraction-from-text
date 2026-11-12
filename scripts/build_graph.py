@@ -1,7 +1,13 @@
-"""Predict the relations of a split with known entities and build its knowledge graph.
+"""Build the knowledge graph of a split from the facts of a method with known entities.
+
+The facts come from one of two sources:
+- --run <run folder>: the facts that the run kept, as written for the shared evaluator
+  (redocred_<split>_facts_seed<N>.csv). This works for any method, ensembles included;
+- otherwise the first ATLOP-style classifier (--model), which predicts them here.
 
 Writes the predictions in the Linked-DocRED format, the graph as JSON and GraphML,
-and a report with the relation metrics and the graph metrics.
+and a report with the relation metrics and the graph metrics. With --run, the files
+go to <run folder>/graph/ unless --output-dir is given.
 """
 import argparse
 import copy
@@ -14,6 +20,7 @@ import torch
 from kg_extraction.data.linked_docred import load_relation_names, load_split
 from kg_extraction.evaluation.graph import graph_scores, graph_summary
 from kg_extraction.evaluation.relations import relation_scores, train_fact_names
+from kg_extraction.evaluation.runs import read_run_facts
 from kg_extraction.graph.build import build_graph, to_networkx
 from kg_extraction.relations.doc_encoder import cached_features, default_device
 from kg_extraction.relations.pair_classifier import PairClassifier, corpus_inputs, predict
@@ -30,35 +37,47 @@ def with_predictions(docs, facts):
     return predicted
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--split", default="dev", choices=("dev", "test"))
-    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
-    parser.add_argument("--features-dir", default="data/processed/features")
-    parser.add_argument("--model", default="data/processed/models/relation_model.pt")
-    parser.add_argument("--output-dir", default="results/known_entities")
-    args = parser.parse_args()
-
-    docs = load_split(args.data_dir, args.split)
-    relation_names = load_relation_names(args.data_dir)
+def classifier_facts(args, docs):
     features = cached_features(Path(args.features_dir) / f"{args.split}.pt", docs)
     checkpoint = torch.load(args.model, weights_only=False)
     relations = checkpoint["relations"]
     model = PairClassifier(len(relations)).to(default_device())
     model.load_state_dict(checkpoint["state"])
     pairs, inputs = corpus_inputs(features, docs)
-    facts = predict(model, pairs, inputs, docs, relations)
+    return predict(model, pairs, inputs, docs, relations)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--split", default="dev", choices=("dev", "test"))
+    parser.add_argument("--run", help="run folder whose kept facts build the graph")
+    parser.add_argument("--seed", type=int, default=0, help="seed of the run files")
+    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
+    parser.add_argument("--features-dir", default="data/processed/features")
+    parser.add_argument("--model", default="data/processed/models/relation_model.pt")
+    parser.add_argument("--output-dir",
+                        help="default: <run>/graph with --run, else results/known_entities")
+    args = parser.parse_args()
+
+    docs = load_split(args.data_dir, args.split)
+    relation_names = load_relation_names(args.data_dir)
+    if args.run:
+        facts = read_run_facts(args.run, args.split, args.seed, docs)
+    else:
+        facts = classifier_facts(args, docs)
 
     graph = build_graph(docs, facts, relation_names)
     report = {
         "split": args.split,
+        "source": args.run or args.model,
         "relations": relation_scores(docs, facts, train_fact_names(
             load_split(args.data_dir, "train"))),
         "graph": graph_scores(docs, graph),
         "summary": graph_summary(graph),
     }
 
-    output = Path(args.output_dir)
+    default_output = Path(args.run) / "graph" if args.run else "results/known_entities"
+    output = Path(args.output_dir or default_output)
     output.mkdir(parents=True, exist_ok=True)
     (output / f"{args.split}_predictions.json").write_text(
         json.dumps(with_predictions(docs, facts)), encoding="utf-8")

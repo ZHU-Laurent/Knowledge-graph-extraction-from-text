@@ -118,7 +118,23 @@ def evaluate_redocred(predictions, subset="dev_debug", clusters=None, verbose=Tr
 
     for name, keep in (("intra", True), ("inter", False)):
         g = [f for f in gold if _same_sentence(docs[f[0]], f[1], f[3]) == keep]
+        pk = [f for f in pred if _same_sentence(docs[f[0]], f[1], f[3]) == keep]
         s[f"recall_{name}_sentence"] = sum(f in pred for f in g) / len(g) if g else 0.0
+        s[f"f1_{name}_sentence"] = _prf(sum(f in pred for f in g), len(pk), len(g))[2]
+
+    # Ign F1 (DocRED): correct facts whose mention names + relation already form a train fact are not counted
+    names = {(mh["name"], mt["name"], x["r"]) for d in _split("train") for x in d["relations"]
+             for mh in d["entities"][x["h"]]["mentions"] for mt in d["entities"][x["t"]]["mentions"]}
+    seen = sum(1 for d0, h0, r0, t0 in gold & pred
+               if any((mh["name"], mt["name"], r0) in names for mh in docs[d0]["entities"][h0]["mentions"]
+                      for mt in docs[d0]["entities"][t0]["mentions"]))
+    s["ign_p"] = (len(gold & pred) - seen) / (len(pred) - seen) if len(pred) > seen else 0.0
+    s["ign_f1"] = 2 * s["ign_p"] * r / (s["ign_p"] + r) if s["ign_p"] + r else 0.0
+
+    # Typing: only pairs related in gold and predicted related; is the relation right?
+    both = {(d0, h0, t0) for d0, h0, _, t0 in gold} & {(d0, h0, t0) for d0, h0, _, t0 in pred}
+    tg, tpred = {f for f in gold if (f[0], f[1], f[3]) in both}, {f for f in pred if (f[0], f[1], f[3]) in both}
+    s["typing_p"], s["typing_r"], s["typing_f1"] = _prf(len(tg & tpred), len(tpred), len(tg))
 
     counts = Counter(x["r"] for d in _split("train") for x in d["relations"])
     rank = {rel: i for i, (rel, _) in enumerate(counts.most_common())}
@@ -133,6 +149,19 @@ def evaluate_redocred(predictions, subset="dev_debug", clusters=None, verbose=Tr
     pp = {(d0, h0, t0) for d0, h0, _, t0 in pred}
     s["detect_p"], s["detect_r"], s["detect_f1"] = _prf(len(pp & set(labels)), len(pp), len(labels))
 
+    # 95% interval of micro F1, resampling documents (same draws as scripts/evaluate.py)
+    ids = sorted(docs)
+    pos = {d0: i for i, d0 in enumerate(ids)}
+    counts = np.zeros((3, len(ids)))
+    for row, fs in enumerate((gold & pred, pred, gold)):
+        for f in fs:
+            counts[row, pos[f[0]]] += 1
+    draws = np.random.default_rng(0).integers(0, len(ids), size=(1000, len(ids)))
+    tp_, np_, ng_ = counts[:, draws].sum(axis=2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        boot = np.where(np_ + ng_ > 0, 2 * tp_ / (np_ + ng_), 0.0)
+    s["micro_f1_ci_low"], s["micro_f1_ci_high"] = float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))
+
     if clusters is not None:
         if isinstance(clusters, pd.DataFrame):
             clusters = clusters[["doc_id", "h", "t", "cluster"]].itertuples(index=False, name=None)
@@ -142,8 +171,10 @@ def evaluate_redocred(predictions, subset="dev_debug", clusters=None, verbose=Tr
             s.update({f"cl_{k}": v for k, v in clustering_scores([next(iter(labels[k])) for k in keys],
                                                                   [cl[k] for k in keys]).items()})
     if verbose:
-        print(f"[{subset}] micro P/R/F1 = {p:.3f} / {r:.3f} / {f1:.3f}   macro F1 = {s['macro_f1']:.3f}   "
-              f"evidence-only F1 = {ef1:.3f}   detection F1 = {s['detect_f1']:.3f}")
+        print(f"[{subset}] KEY  F1 = {f1:.3f} (95% interval {s['micro_f1_ci_low']:.3f} to {s['micro_f1_ci_high']:.3f})"
+              f"   Ign F1 = {s['ign_f1']:.3f}")
+        print(f"          P/R = {p:.3f} / {r:.3f}   detection F1 = {s['detect_f1']:.3f}   "
+              f"typing F1 = {s['typing_f1']:.3f}   macro F1 = {s['macro_f1']:.3f}   evidence-only F1 = {ef1:.3f}")
         print(f"          recall same sentence = {s['recall_intra_sentence']:.3f}, cross sentence = "
               f"{s['recall_inter_sentence']:.3f}   macro F1 frequent/medium/rare = {s['macro_f1_frequent']:.3f}/"
               f"{s['macro_f1_medium']:.3f}/{s['macro_f1_rare']:.3f}")

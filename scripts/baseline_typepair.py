@@ -1,4 +1,4 @@
-"""Reference baseline and worked example of the prediction format for the main track.
+"""Reference baseline and worked example of the prediction format.
 
 No text is read. For each (head type, tail type, same sentence) key, train labels give P(relation | key);
 a pair gets every relation whose probability passes a threshold tuned on dev_debug.

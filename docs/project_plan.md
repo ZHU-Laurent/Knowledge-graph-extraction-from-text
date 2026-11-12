@@ -1,6 +1,6 @@
 # Relation extraction with known entities: project plan
 
-**Status:** current plan of the team, since 2026-11-09. The first working version is on the branch `known-entities-v1`, described in `docs/known_entities_v1.md` of that branch.
+**Status:** current plan of the team, since 2026-11-09. The first version of the methods is described in [known_entities_v1.md](known_entities_v1.md), the later ones in [analysis_v2.md](analysis_v2.md).
 
 ## 1. Scope
 
@@ -55,7 +55,7 @@ The shared benchmark also fixes two small subsets for quick runs (seed 0): `trai
 - **Rare relations:** the 10 largest relations hold 62.1% of facts, and 33 relation types have fewer than 50 instances.
 - **Wikidata:** the relations are Wikidata properties, such as `P17` for "country". About 90% of entities other than dates and numbers have a Wikidata item, which merges them across documents in the graph. Dates and numbers have none.
 
-We also use **FewRel** NYT and PubMed, the PromptORE paper's data, to check that our PromptORE implementation reproduces the paper.
+**Decision of 2026-11-12:** Linked-Re-DocRED is the only dataset of the project, so that every method is scored on the same documents. FewRel, the PromptORE paper's data, only served once to check our PromptORE implementation (PubMed variant, within 1.3 points of the paper); it is no longer part of the plan.
 
 ## 4. Methods compared
 
@@ -82,7 +82,8 @@ We also use **FewRel** NYT and PubMed, the PromptORE paper's data, to check that
 - Each mention is marked, and each document goes once through `bert-base-cased`, frozen in v1.
 - An entity vector pools its mentions, and a pair context vector pools the tokens that both entities attend to.
 - A bilinear classifier with an **adaptive threshold** class handles "no relation" and pairs with several relations, without a threshold tuned on dev.
-- **Next versions:** fine-tune the encoder, which is the most likely large gain, then try [DREEAM](https://github.com/YoumiMa/dreeam), which also predicts evidence sentences. Both need a GPU for long runs.
+- **Later versions** ([analysis_v2.md](analysis_v2.md)): the same head computed document by document (`relations/doc_model.py`), with pair features, reasoning layers over the entity-pair grid, one fact threshold chosen on dev instead of the learned one, and the last 4 layers of the encoder trained. No GPU is needed: the states that enter the trained layers are cached.
+- **Not tried:** full fine-tuning, a larger fine-tuned encoder, and [DREEAM](https://github.com/YoumiMa/dreeam), which also predicts evidence sentences.
 
 ### M4: LLM (optional)
 
@@ -92,7 +93,7 @@ Published zero-shot results are weak, about 18 F1 on the Re-DocRED test set (sec
 
 - **Nodes:** an entity with a Wikidata item becomes the node of that item, shared across documents. Dates and numbers merge on their normalized value. Other entities stay local to their document.
 - **Edges:** one per distinct (head node, relation, tail node). An edge keeps its supporting documents, and its confidence is the noisy-or of their scores: `1 − Π(1 − score)`.
-- **Outputs:** the graph as JSON and GraphML, for networkx or Gephi.
+- **Outputs:** the graph as JSON and GraphML, for networkx or Gephi. `scripts/build_graph.py --run <run folder>` builds it from the facts kept by any run.
 - **Next steps:** parse dates, so "4 June 1985" and "1985-06-04" merge, and add consistency rules taken from Wikidata's property constraints (symmetric, inverse and single-value relations).
 
 ## 6. Evaluation
@@ -109,15 +110,16 @@ Published zero-shot results are weak, about 18 F1 on the Re-DocRED test set (sec
 
 | Metric | Definition | In the shared evaluator |
 |---|---|---|
-| **F1** | Micro precision, recall and F1 over predicted facts | Yes |
-| **Ign F1** | F1 that ignores facts whose names already form a fact in train, the standard companion to F1 in DocRED papers | **To add** |
+| **F1** | Micro precision, recall and F1 over predicted facts. Key metric | Yes |
+| **Ign F1** | F1 that ignores facts whose names already form a fact in train, the standard companion to F1 in DocRED papers. Key metric | Yes |
 | **Macro F1** | Mean F1 over relation types, and by frequent, medium and rare relations | Yes |
-| **Intra / inter** | Pairs that share a sentence, and pairs that do not | Recall only, F1 to add |
+| **Intra / inter** | Pairs that share a sentence, and pairs that do not | Yes |
 | **Detection F1** | F1 of the decision "this pair has a relation" | Yes |
-| **Typing F1** | F1 on pairs that are related and detected | **To add** |
+| **Typing F1** | F1 on pairs that are related and detected | Yes |
 | **Evidence F1** | F1 on facts whose annotation lists evidence sentences | Yes |
 | **B³, V-measure, ARI** | Clustering metrics of the PromptORE paper | Yes |
-| **Graph metrics** | Graph precision, recall and F1 over distinct triples, precision of the N most confident edges, precision by number of supporting documents | **To add** |
+| **Graph metrics** | Graph precision, recall and F1 over distinct triples, precision of the N most confident edges, precision by number of supporting documents | Yes, script only |
+| **95% interval, paired test** | Bootstrap over documents: interval of F1 for each run, and a paired test between two runs (`scripts/compare_runs.py`) | Yes |
 
 ### Rules
 
@@ -155,31 +157,43 @@ Check the DREEAM numbers and the encoder of Table 6 in the PDFs before the repor
 
 **Done:**
 
-- PromptORE reproduced on FewRel PubMed, within 1.3 points of the paper.
 - Shared benchmark and evaluator, with the type-pair baseline (dev F1 18.8).
-- On `known-entities-v1`, a first version of M1, M2 and M3 and of the graph. Results on test, one seed:
+- M0 to M3 and the graph, scored with the shared evaluator (`report/leaderboard.md`). Results on test, mean ± std over seeds 0 to 2 when a run has 3 seeds. These test scores are provisional: the final test run comes after the choices on dev.
 
-| Method | F1 | Ign F1 | Detection F1 | Typing F1 | Graph F1 |
-|---|---|---|---|---|---|
-| M3, ATLOP-style, frozen encoder | 57.76 | 56.75 | 60.11 | 92.25 | 59.18 |
-| M2, PromptORE + classifier | 50.45 | 48.09 | 53.25 | 89.02 | 50.72 |
-| M1, PromptORE + clusters (k = 400) | 46.37 | 44.10 | 51.21 | 84.14 | 46.48 |
+| Method | Run | **F1** | **Ign F1** | P | R | Detection F1 | Typing F1 | Macro F1 |
+|---|---|---|---|---|---|---|---|---|
+| M3 ensemble: document models + M2 | `doc-tune-ens+old` | **74.99** | **73.83** | 79.63 | 70.86 | 76.51 | 95.46 | 60.49 |
+| M3, document model, last 4 encoder layers trained (seed 0) | `doc-tune4` | **73.55** | **72.27** | 77.36 | 70.09 | 75.49 | 94.80 | 59.35 |
+| M3, document model, frozen encoder | `doc-full` | **66.04 ± 0.14** | **64.53** | 69.36 | 63.12 | 68.45 | 93.15 | 48.46 |
+| M3 of v1, ATLOP-style, frozen encoder | `atlop-frozen` | **57.70 ± 0.10** | **56.76** | 74.35 | 47.18 | 60.14 | 92.17 | 36.72 |
+| M2, PromptORE + classifier | `promptore-classifier` | **50.41 ± 0.14** | **48.07** | 49.10 | 51.79 | 53.21 | 88.91 | 30.58 |
+| M1, PromptORE + clusters (k = 400) | `promptore-clusters` | **45.93 ± 0.38** | **43.56** | 44.95 | 47.02 | 51.29 | 83.19 | 20.97 |
+| M0, type-pair baseline | `baseline-typepair` | **18.86** | **17.80** | 17.45 | 20.52 | 28.14 | 61.98 | 1.71 |
 
-Typing F1 is between 84 and 92 while detection F1 is between 51 and 60: detection is the hard part for every method.
+F1 and Ign F1 are the key metrics, the others are for diagnosis (see [evaluation.md](evaluation.md#reading-the-leaderboard)). The run folders are written by `scripts/compare_methods.py`, `scripts/baseline_typepair.py`, `scripts/train_doc_model.py` and `scripts/combine_runs.py`. The shared evaluator gives the same F1, Ign F1 and typing F1 as the branch metrics (`evaluation/relations.py`).
+
+Graph F1 (test, shared evaluator): 75.84 for the ensemble, 74.34 for `doc-tune4`, then 59.20, 50.70, 46.01 and 19.42 for M3 of v1, M2, M1 and M0. Error analysis of v1: [analysis_v1.md](analysis_v1.md); gain of each later change: [analysis_v2.md](analysis_v2.md).
+
+Typing F1 is between 83 and 95 while detection F1 is between 51 and 77: detection is the hard part for every method. On dev, 85% of the facts the ensemble misses are on pairs it does not detect, and the two geographic relations `P131` and `P17` give a third of its false positives.
+
+**Test use:** the test rows above were computed while methods were still changing, which rule 1 of section 6 does not allow for a final result. From 2026-11-12, runs are scored on dev only (no `--test`) until the final run of step 10.
 
 ### Next steps
 
 | # | Step | Depends on |
 |---|---|---|
-| 1 | Merge `known-entities-v1` into `main` through a pull request, and score its methods with the shared evaluator | |
-| 2 | Add Ign F1, typing F1, intra / inter F1 and the graph metrics to the shared evaluator | |
-| 3 | Finish the FewRel reproduction on NYT | |
-| 4 | Fine-tune the encoder of M3, on a GPU | 1 |
-| 5 | Experiment B, label efficiency | 1, 2 |
-| 6 | Experiments C and D | 1, 2 |
-| 7 | Run 3 seeds per method, then test once | 4 to 6 |
-| 8 | Optional: label-free cluster naming, DREEAM, LLM | 1 |
-| 9 | Report and slides | All above |
+| 1 | Done: `known-entities-v1` merged into `main` (PR #2), methods scored with the shared evaluator | |
+| 2 | Done: the shared evaluator has Ign F1, typing F1, intra / inter F1, graph metrics, several seeds, bootstrap intervals and a paired test (`scripts/compare_runs.py`); test rows are provisional until a card says `test_status: final` | |
+| 3 | Done: first review and error analysis, [analysis_v1.md](analysis_v1.md). Detection is the bottleneck, M3 under-predicts, rare relations are lost | 1, 2 |
+| 4 | Done: document-level model on frozen features with a threshold tuned on dev, pair features, token layers and pair layers; gain of each part in [analysis_v2.md](analysis_v2.md). Test F1 66.0 ± 0.1 for one model (M3 of v1: 57.7) | 3 |
+| 5 | Done without GPU: the last 4 layers of the encoder are trained from cached lower states (`--tune-layers`), test F1 73.5 for one model and 75.0 for the final ensemble (provisional), see [analysis_v2.md](analysis_v2.md). Still open: full fine-tuning on a GPU, more layers, a larger encoder | 3 |
+| 6 | Done: ensembles of seeds, encoders and M2 (test F1 70.4, provisional); PromptORE typing on the pairs of the document model (M2: dev 49.2 to 60.9) | 4 |
+| 7 | Rare relations: the adaptive focal loss did not help (dev −0.4); still open: class-balanced loss, soft cluster naming in M1 | 5 |
+| 8 | Dropped on 2026-11-12: FewRel reproduction on NYT (one dataset only) | |
+| 9 | Experiment B, label efficiency, and the rest of experiments C and D | 5 to 7 |
+| 10 | 3 seeds per method (done for v1: std 0.1 to 0.5 point), then test once with `test_status: final` | 4 to 9 |
+| 11 | Optional: DREEAM, LLM | 5 |
+| 12 | Report and slides | All above |
 
 ## 9. Risks
 
@@ -187,7 +201,7 @@ Typing F1 is between 84 and 92 while detection F1 is between 51 and 60: detectio
 |---|---|
 | Low recall of every method | Detection is the bottleneck: try a lower fact threshold, chosen on dev, and a fine-tuned encoder |
 | Rare relations | Report results by frequency |
-| No GPU for fine-tuning | Cloud GPU, otherwise keep the frozen encoder and cite published scores |
+| No GPU for full fine-tuning | Handled: the last encoder layers are trained on a laptop from cached states; published scores are cited for full fine-tuning |
 | PromptORE is slow: one BERT pass per pair | Cache the embeddings in float16 and reuse the same train sample |
 | Missing annotations counted as errors | Check a sample of false positives in Wikidata and by hand |
 
@@ -198,6 +212,6 @@ The PromptORE and Linked-DocRED code, and the Linked-DocRED data, are under GPL-
 ## 11. To confirm with the teacher
 
 - Is Linked-Re-DocRED acceptable in place of Linked-DocRED?
-- Is a GPU available to fine-tune the encoder?
+- Is a GPU available for full fine-tuning? Partial fine-tuning already runs on a laptop.
 - Should the LLM comparison be included?
 - What are the expected deliverables and deadlines?

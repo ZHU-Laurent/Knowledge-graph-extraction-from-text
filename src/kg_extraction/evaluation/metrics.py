@@ -71,3 +71,71 @@ def prf(n_tp, n_pred, n_gold):
     p = n_tp / n_pred if n_pred else 0.0
     r = n_tp / n_gold if n_gold else 0.0
     return p, r, (2 * p * r / (p + r) if p + r else 0.0)
+
+
+def doc_counts(gold_facts, pred_facts, doc_ids):
+    """Per-document (hits, predictions, gold) counts, as three arrays aligned with `doc_ids`."""
+    gold = {f for f in gold_facts if f[2] != NO_RELATION}
+    pred = {f for f in pred_facts if f[2] != NO_RELATION}
+    index = {d: i for i, d in enumerate(doc_ids)}
+    counts = np.zeros((3, len(doc_ids)))
+    for row, facts in enumerate((gold & pred, pred, gold)):
+        for f in facts:
+            counts[row, index[f[0]]] += 1
+    return counts
+
+
+def _f1_from_counts(counts):
+    """Micro F1 from (hits, predictions, gold) totals; works on arrays of totals."""
+    tp, n_pred, n_gold = counts
+    with np.errstate(divide="ignore", invalid="ignore"):
+        f1 = np.where(n_pred + n_gold > 0, 2 * tp / (n_pred + n_gold), 0.0)
+    return f1
+
+
+def bootstrap_f1(counts, n_samples=1000, seed=0):
+    """95% confidence interval of micro F1, resampling documents with replacement."""
+    n_docs = counts.shape[1]
+    draws = np.random.default_rng(seed).integers(0, n_docs, size=(n_samples, n_docs))
+    f1 = _f1_from_counts(counts[:, draws].sum(axis=2))
+    return float(np.percentile(f1, 2.5)), float(np.percentile(f1, 97.5))
+
+
+def paired_bootstrap(counts_a, counts_b, n_samples=1000, seed=0):
+    """F1(a) - F1(b), its 95% interval and a one-sided p-value, on the same resampled documents.
+
+    p is the share of resamples where a does not beat b: below 0.05, a is better beyond document sampling noise.
+    """
+    n_docs = counts_a.shape[1]
+    draws = np.random.default_rng(seed).integers(0, n_docs, size=(n_samples, n_docs))
+    delta = _f1_from_counts(counts_a[:, draws].sum(axis=2)) - _f1_from_counts(counts_b[:, draws].sum(axis=2))
+    observed = float(_f1_from_counts(counts_a.sum(axis=1)) - _f1_from_counts(counts_b.sum(axis=1)))
+    return observed, float(np.percentile(delta, 2.5)), float(np.percentile(delta, 97.5)), float(np.mean(delta <= 0))
+
+
+def ign_scores(gold_facts, pred_facts, in_train):
+    """Ign precision and F1, official DocRED formula.
+
+    Correct predictions that `in_train(fact)` marks as already seen in train (same head name, tail name
+    and relation) are removed from the hits and from the predictions; recall is left unchanged.
+    """
+    gold = {f for f in gold_facts if f[2] != NO_RELATION}
+    pred = {f for f in pred_facts if f[2] != NO_RELATION}
+    tp = gold & pred
+    seen = sum(1 for f in tp if in_train(f))
+    p = (len(tp) - seen) / (len(pred) - seen) if len(pred) > seen else 0.0
+    r = len(tp) / len(gold) if gold else 0.0
+    return p, (2 * p * r / (p + r) if p + r else 0.0)
+
+
+def typing_scores(gold_facts, pred_facts):
+    """P/R/F1 on the pairs that are both related in gold and predicted related: relation choice only.
+
+    Missed pairs and false pairs are detection errors and do not count here.
+    """
+    gold = {f for f in gold_facts if f[2] != NO_RELATION}
+    pred = {f for f in pred_facts if f[2] != NO_RELATION}
+    pairs = {(d, h, t) for d, h, _, t in gold} & {(d, h, t) for d, h, _, t in pred}
+    gold = {f for f in gold if (f[0], f[1], f[3]) in pairs}
+    pred = {f for f in pred if (f[0], f[1], f[3]) in pairs}
+    return prf(len(gold & pred), len(pred), len(gold))
