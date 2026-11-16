@@ -108,7 +108,7 @@ For reference, published ATLOP fully fine-tuned with RoBERTa-large on a GPU has 
 
 ![Detection and typing](figures/detection_vs_typing.png)
 
-**Q2, detection against typing:** every method types well, with typing F1 from 83 to 95, but detects poorly, with detection F1 from 51 to 77. The hypothesis of the project holds: the hard part is deciding which pairs are related. Most of the progress from M3 to the ensemble comes from detection (60 to 77), while typing moved from 92 to 95. Even M0', which reads no text, has the same gap: detection 34, typing 60.
+**Q2, detection against typing:** every method that reads the text types well, with typing F1 from 83 to 95, but detects poorly, with detection F1 from 51 to 77. The hypothesis of the project holds: the hard part is deciding which pairs are related. Most of the progress from M3 to the ensemble comes from detection (60 to 77), while typing moved from 92 to 95. Even M0', which reads no text, has the same gap: detection 34, typing 60.
 
 ![Relation frequency](figures/relation_frequency.png)
 

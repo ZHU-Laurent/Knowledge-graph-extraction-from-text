@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--split", default="dev", choices=("dev", "test"))
     parser.add_argument("--runs", nargs="+", required=True, help="run folders to compare")
     parser.add_argument("--seed", type=int, default=0, help="seed of the run files")
-    parser.add_argument("--data-dir", default="data/raw/linked-re-docred")
+    parser.add_argument("--data-dir", default="data/raw/Linked-Re-DocRED")
     parser.add_argument("--output", help="default: results/graph_viewer_<split>.html")
     args = parser.parse_args()
 
