@@ -1,6 +1,6 @@
 # M0': a structural-prior baseline with a detector, a typer and calibrated scores
 
-**Status:** first working version, 2026-11-16. Dev results, seed 0.
+**Status:** 2026-11-16, fixed and merged (see section 6). Dev results, seed 0; v2 also with seeds 0 to 2 (23.05 ± 0.02, leaderboard).
 
 This is a new comparison method. It reads **no text**, like the type-pair baseline it replaces, and
 it is scored by the same shared evaluator as every other method
@@ -151,7 +151,7 @@ baseline family.
 ### 3.4 Per-relation thresholds do not help (negative result)
 
 One threshold per relation, each chosen to maximise the F1 of its own relation, gives **11.12**
-dev F1 in sample and **12.41** cross-fitted, against **23.05** and **23.53** for one global
+dev F1 in sample and **9.93** cross-fitted, against **23.05** and **23.02** for one global
 threshold. The reason is that maximising each relation's own F1 is not the same objective as
 maximising the micro F1: a rare relation buys a little recall with a lot of false positives.
 
@@ -160,7 +160,7 @@ model ("Per-relation thresholds do not help... Dropped"), on a different method 
 representation. The global threshold is kept.
 
 For reference, the global threshold is not overfitted: cross-fitted on five folds of the dev
-documents it gives 23.53 against 23.05 in sample.
+documents it gives 23.02 against 23.05 in sample (seeds 1 and 2: 23.01 and 22.77).
 
 ### 3.5 What the text is worth, once the model is right
 
@@ -225,7 +225,11 @@ a laptop CPU.
 
 - **Test.** The run stays on dev, as the rules of the plan require until every choice is frozen.
   The method needs no new choice to move to test: `--test` predicts it with the dev threshold.
-- **The leaderboard.** `report/leaderboard.csv` was left untouched. One command adds the row:
-  `python scripts/evaluate.py results/m0-structural-v2 --leaderboard report/leaderboard.csv`.
-- **Three seeds.** The method has no randomness beyond the negative sampling, so the seeds would
-  only measure the sampling.
+- **The leaderboard.** `m0-structural-v2` is on the dev leaderboard, seeds 0 to 2.
+- **Three seeds.** The seeds only change the negative sampling: dev F1 23.07, 23.07, 23.03.
+
+## 6. Fixes made at merge time
+
+- **Wikidata link feature:** the script read `entity["wikidata"]`, a field the dataset does not have, so the feature was always 0. It now reads `entity_linking.wikidata_resource` and counts real items only (`Q...`; dates and numbers carry `#ignored#`, unlinked entities `#DocRED-<n>#`). v1 21.64 → 21.63, v2 23.05 → 23.07: the link adds nothing the entity types do not already say.
+- **Cross-fitting folds:** documents got their rank (0 to 499) as fold number instead of the rank modulo 5, so the five held-out folds held one document each. The cross-fitted numbers above are the corrected ones (global 23.53 → 23.02, per-relation 12.41 → 9.93).
+- **Default threshold rule:** `--thresholds` now defaults to `global`, the rule this note keeps.
