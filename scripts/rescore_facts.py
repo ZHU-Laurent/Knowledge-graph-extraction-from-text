@@ -50,7 +50,9 @@ def load_scores(member, split):
 
 
 def wikidata_id(entity):
-    return (entity.get("entity_linking") or {}).get("wikidata_resource")
+    """Return the Wikidata item of an entity, or None for dates, numbers and unlinked entities."""
+    link = (entity.get("entity_linking") or {}).get("wikidata_resource") or ""
+    return link if link.startswith("Q") else None
 
 
 def sentences(entity):

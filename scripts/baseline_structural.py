@@ -67,7 +67,7 @@ def entity_info(document, types):
             "sentences": sentences,
             "first_sentence": sentences[0] if sentences else -1,
             "mentions": len(entity["mentions"]),
-            "wikidata": 1 if entity.get("wikidata") else 0,
+            "wikidata": 1 if str((entity.get("entity_linking") or {}).get("wikidata_resource")).startswith("Q") else 0,
         })
     return info
 
@@ -279,7 +279,7 @@ def cross_fitted_f1(scores, correct, pairs, relations, rule, n_folds=5, seed=0):
     """
     doc_of_pair = np.array([index for index, _, _ in pairs])
     documents = np.unique(doc_of_pair)
-    fold_of_doc = {int(doc): number for number, doc in
+    fold_of_doc = {int(doc): number % n_folds for number, doc in
                    enumerate(np.random.default_rng(seed).permutation(documents))}
     fold_of_pair = np.array([fold_of_doc[int(doc)] for doc in doc_of_pair])
     per_fold, totals = [], [0, 0, 0]
@@ -308,7 +308,7 @@ def main():
     parser.add_argument("--data-dir", default=RAW)
     parser.add_argument("--runs-dir", default="results")
     parser.add_argument("--features", default="v2", choices=["v0", "v1", "v2"])
-    parser.add_argument("--thresholds", default="per-relation", choices=["global", "per-relation"])
+    parser.add_argument("--thresholds", default="global", choices=["global", "per-relation"])
     parser.add_argument("--negatives-per-positive", type=int, default=3,
                         help="unrelated train pairs per related one; 0 uses all of them")
     parser.add_argument("--seed", type=int, default=0)
