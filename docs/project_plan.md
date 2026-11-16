@@ -62,6 +62,7 @@ The shared benchmark also fixes two small subsets for quick runs (seed 0): `trai
 | ID | Method | Representation of a pair | Labels used | Role |
 |---|---|---|---|---|
 | M0 | **Type-pair baseline** (`scripts/baseline_typepair.py`) | Entity types and whether the entities share a sentence, no text | Train | Lower bound: any method that does not beat it clearly is not reading the text |
+| M0' | **Structural baseline** (`scripts/baseline_structural.py`, [m0_structural.md](m0_structural.md)) | Types, sentence distance, mentions, position, Wikidata links; a detector and one classifier per relation, no text | Train | What the structure of a document is worth without its text |
 | M1 | **PromptORE + clusters** | `[CLS] <context> <head> [MASK] <tail>. [SEP]` through a frozen `bert-base-uncased`, the `[MASK]` vector. One pass per pair | Train, for the detector and to name the clusters. None for the clusters | Closest to the paper |
 | M2 | **PromptORE + classifier** | Same `[MASK]` vectors | Train | Same representation as M1, typed with labels directly. The gap with M1 is the cost of typing through clusters |
 | M3 | **ATLOP-style classifier** | One pass of `bert-base-cased` per document, with entity and pair context vectors | Train | Supervised document-level reference, close to the state of the art |
@@ -168,6 +169,7 @@ Check the DREEAM numbers and the encoder of Table 6 in the PDFs before the repor
 | M3 of v1, ATLOP-style, frozen encoder | `atlop-frozen` | **57.70 ± 0.10** | **56.76** | 74.35 | 47.18 | 60.14 | 92.17 | 36.72 |
 | M2, PromptORE + classifier | `promptore-classifier` | **50.41 ± 0.14** | **48.07** | 49.10 | 51.79 | 53.21 | 88.91 | 30.58 |
 | M1, PromptORE + clusters (k = 400) | `promptore-clusters` | **45.93 ± 0.38** | **43.56** | 44.95 | 47.02 | 51.29 | 83.19 | 20.97 |
+| M0', structural baseline | `m0-structural-v2` | **21.90 ± 0.06** | **20.39** | 17.03 | 30.66 | 34.22 | 60.20 | 5.74 |
 | M0, type-pair baseline | `baseline-typepair` | **18.86** | **17.80** | 17.45 | 20.52 | 28.14 | 61.98 | 1.71 |
 
 F1 and Ign F1 are the key metrics, the others are for diagnosis (see [evaluation.md](evaluation.md#reading-the-leaderboard)). The run folders are written by `scripts/compare_methods.py`, `scripts/baseline_typepair.py`, `scripts/train_doc_model.py` and `scripts/combine_runs.py`. The shared evaluator gives the same F1, Ign F1 and typing F1 as the branch metrics (`evaluation/relations.py`).
@@ -190,7 +192,7 @@ Typing F1 is between 83 and 95 while detection F1 is between 51 and 77: detectio
 | 6 | Done: ensembles of seeds, encoders and M2 (test F1 70.4, provisional); PromptORE typing on the pairs of the document model (M2: dev 49.2 to 60.9) | 4 |
 | 7 | Rare relations: the adaptive focal loss did not help (dev −0.4); still open: class-balanced loss, soft cluster naming in M1 | 5 |
 | 8 | Dropped on 2026-11-12: FewRel reproduction on NYT (one dataset only) | |
-| 9 | Experiment B, label efficiency, and the rest of experiments C and D | 5 to 7 |
+| 9 | Done: experiment B, label efficiency ([label_efficiency.md](../report/label_efficiency.md)) and calibration; still open: experiment C (PromptORE ablations) | 5 to 7 |
 | 10 | 3 seeds per method (done for v1: std 0.1 to 0.5 point), then test once with `test_status: final` | 4 to 9 |
 | 11 | Optional: DREEAM, LLM | 5 |
 | 12 | Report and slides | All above |

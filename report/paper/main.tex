@@ -29,7 +29,7 @@
 \author[1]{\fnm{TODO} \sur{TODO}}\email{TODO} % TODO: git author "baerjiuu", real name unknown
 \affil[1]{\orgdiv{Computer Science Department, 5IF}, \orgname{INSA Lyon}, \orgaddress{\city{Lyon}, \country{France}}}
 
-\abstract{We build a knowledge graph from a corpus of Wikipedia introductions whose entities are already known (mentions, types, coreference and Wikidata links), so that the only task is to find which relations hold between each ordered pair of entities of a document, and then to merge the facts of all documents into one graph. On Linked-Re-DocRED (96 relations, 94.3\% of the train entity pairs without any relation) we compare relations discovered without labels with PromptORE, PromptORE with a supervised classifier, an ATLOP-style document classifier, and a document-level model that we extend step by step: a fact threshold chosen on dev, pair features, token and pair-grid reasoning layers, partial fine-tuning of the last four encoder layers on a laptop GPU, and ensembles. All methods are scored by one shared evaluator. The best ensemble reaches 75.0 F1 (73.8 Ign F1) on test, against 50.4 for PromptORE with a classifier and 45.9 for PromptORE clusters (provisional test scores). Every method types related pairs well (typing F1 83 to 95) but detects them poorly (detection F1 51 to 77): detection, not typing, is the bottleneck. With 5\% of the train documents the supervised model already beats PromptORE trained on all of them. In the merged graph, an edge stated by three or more documents is correct 99\% of the time, and scores rank facts reliably although they are not calibrated probabilities.}
+\abstract{We build a knowledge graph from a corpus of Wikipedia introductions whose entities are already known (mentions, types, coreference and Wikidata links), so that the only task is to find which relations hold between each ordered pair of entities of a document, and then to merge the facts of all documents into one graph. On Linked-Re-DocRED (96 relations, 94.3\% of the train entity pairs without any relation) we compare relations discovered without labels with PromptORE, PromptORE with a supervised classifier, an ATLOP-style document classifier, and a document-level model that we extend step by step: a fact threshold chosen on dev, pair features, token and pair-grid reasoning layers, partial fine-tuning of the last four encoder layers on a laptop GPU, and ensembles. All methods are scored by one shared evaluator. The best ensemble reaches 75.0 F1 (73.8 Ign F1) on test, against 50.4 for PromptORE with a classifier and 45.9 for PromptORE clusters (provisional test scores). Every method that reads the text types related pairs well (typing F1 83 to 95) but detects them poorly (detection F1 51 to 77): detection, not typing, is the bottleneck. With 5\% of the train documents the supervised model already beats PromptORE trained on all of them. In the merged graph, an edge stated by three or more documents is correct 99\% of the time, and scores rank facts reliably although they are not calibrated probabilities.}
 
 \keywords{relation extraction, document-level relation extraction, knowledge graph, PromptORE, ATLOP, unsupervised relation extraction, Re-DocRED}
 
@@ -103,10 +103,13 @@ Each entity has a type (PER, ORG, LOC, TIME, NUM or MISC), its mentions with the
 
 \subsection{Workflow}\label{sec:workflow}
 
-The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared five families of relation methods, from the simplest to the strongest. We describe for each one what comes from the literature and what we implemented on top of it.
+The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared six families of relation methods, from the simplest to the strongest. We describe for each one what comes from the literature and what we implemented on top of it.
 
 \subsubsection{M0: type-pair baseline}
 No text is read. For each key (head type, tail type, whether the two entities share a sentence), the train labels give $P(r \mid \text{key})$, and a pair receives every relation whose probability passes a threshold tuned on a dev subset. It shows how much the entity types alone explain.
+
+\subsubsection{M0': structural baseline}
+Still no text, but all the structure the dataset gives for free, modelled like M2: a logistic detector gives $P(\text{related})$, one logistic regression per relation gives $P(r \mid \text{related})$, and the fact score is their product. A pair is described by the two entity types and their combination, the sentence distance (in 7 buckets) and its combination with the type pair, the number of mentions of each entity, whether each entity has a Wikidata item, the size of the document, and whether an entity is the first one of the introduction (its subject). Training keeps every related train pair and three unrelated ones per related pair, weighted as in M2; one global threshold is chosen on dev. Unlike M0, it can answer ``no relation'' for a pair whose types often carry one, and its scores rank facts, so the graph precision at $N$ can be computed for it.
 
 \subsubsection{M1 and M2: PromptORE on documents}\label{sec:promptore}
 
@@ -288,7 +291,7 @@ With other team members working on other methods, we wrote a shared benchmark an
 
 \subsubsection{Comparison of the methods (Q1)}
 
-Table~\ref{tab:main} gives the test scores. The supervised document models beat PromptORE by a wide margin: the final ensemble reaches 75.0 F1, against 50.4 for M2 and 45.9 for M1. The gaps are significant: by paired bootstrap on dev, M3 beats M2 by 9.2 points (95\% interval 7.8 to 10.4) and M2 beats M1 by 4.6 points (4.1 to 5.2), far above the seed standard deviation (0.1 to 0.5 point). Our best model, BERT-base partly fine-tuned on a laptop, is 2.6 points below the published fully fine-tuned RoBERTa-large ATLOP (77.6).
+Table~\ref{tab:main} gives the test scores. The supervised document models beat PromptORE by a wide margin: the final ensemble reaches 75.0 F1, against 50.4 for M2 and 45.9 for M1. The gaps are significant: by paired bootstrap on dev, M3 beats M2 by 9.2 points (95\% interval 7.8 to 10.4) and M2 beats M1 by 4.6 points (4.1 to 5.2), far above the seed standard deviation (0.1 to 0.5 point). Our best model, BERT-base partly fine-tuned on a laptop, is 2.6 points below the published fully fine-tuned RoBERTa-large ATLOP (77.6). Without reading the text, the structure of the document is worth little: M0' gains 3.0 test F1 over M0 (dev: +4.3, paired bootstrap interval +3.5 to +5.1), and stays 24 points below PromptORE, so almost all of the F1 of the other methods comes from the text.
 
 \begin{table}[htbp]
 \caption{Test scores of each method (provisional, see Section~\ref{sec:evaluation}). Mean $\pm$ standard deviation over 3 seeds when available.}\label{tab:main}
@@ -298,6 +301,7 @@ Table~\ref{tab:main} gives the test scores. The supervised document models beat 
 Method & F1 & Ign F1 & Detect. F1 & Typing F1 & Graph F1 \\
 \midrule
 M0 type-pair baseline & 18.86 & 17.80 & 28.14 & 61.98 & 19.42 \\
+M0' structural baseline & 21.90 $\pm$ 0.06 & 20.39 & 34.22 & 60.20 & 22.40 \\
 M1 PromptORE + clusters & 45.93 $\pm$ 0.38 & 43.56 & 51.29 & 83.19 & 46.01 \\
 M2 PromptORE + classifier & 50.41 $\pm$ 0.14 & 48.07 & 53.21 & 88.91 & 50.70 \\
 M3 ATLOP-style, frozen & 57.70 $\pm$ 0.10 & 56.76 & 60.14 & 92.17 & 59.20 \\
@@ -341,6 +345,11 @@ Inverse and transitivity rules (on M3) & 54.98 & $-3.77$ \\
 roberta-large, frozen, plain head (against bert-base) & 61.04 & $-2.11$ \\
 Adaptive focal loss instead of the adaptive threshold loss & 62.72 & $-0.43$ \\
 One threshold per relation (cross-fitted) & 62.93 & $-0.11$ \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Post-processing of the final ensemble (cross-fitted on dev)}} \\
+Rules from train: entity types, functional relations & 75.11 & +0.05 \\
+One threshold per relation frequency bucket & 74.74 & $-0.32$ \\
+Rescorer on train rules and document features & 75.36 & +0.31 \\
 \botrule
 \end{tabular}
 \end{table}
@@ -352,11 +361,12 @@ One threshold per relation (cross-fitted) & 62.93 & $-0.11$ \\
 \item \textbf{Partial fine-tuning is the largest single gain:} training the last 2 layers gives 71.0 dev F1, the last 4 layers 73.6, against 66.0 for the frozen model. Macro F1 on test rises from 48.5 to 59.4: rare relations gain the most.
 \item \textbf{Inference rules hurt.} Adding inverse facts (``part of'' implies ``has part'') and the country implied by ``located in'' lowers F1 by about 4 points for every method: Re-DocRED does not annotate every inferred fact, so the rules add as many false facts as true ones.
 \item \textbf{The adaptive focal loss} of KD-DocRE~\cite{tan2022kddocre}, meant for the long tail, did not improve micro or macro F1 in our frozen setting.
+\item \textbf{Post-processing the final ensemble brings nothing established.} We rescored its facts down to a score of 0.05 (the candidates hold 88\% of the gold facts, against 72\% kept): hard rules mined from train (relation and entity types never seen together, one tail for functional relations), one threshold per frequency bucket, and a gradient boosting rescorer fitted on four folds of dev and applied to the fifth, whose features are the member scores, the other relations of the pair and of the head, the reverse fact, the type statistics, two-step chain rules mined from train (386 rules), the sentence distance and the predictions of the other documents for the same Wikidata fact. The best variant gains +0.31 dev F1, but a paired bootstrap interval includes 0 and a second fold draw gives +0.07. Only a feature telling whether the Wikidata fact is in the train graph gives a significant gain (+0.4 to +0.5), and it is mostly memorisation (+0.25 Ign F1). The pair-grid layers, the type inputs and the encoder already carry this information; the remaining errors are pairs with low scores everywhere, which no score feature can recover.
 \end{itemize}
 
 \subsubsection{Detection against typing (Q2)}
 
-Fig.~\ref{fig:detection} confirms the hypothesis of the project. Once a pair is known to be related, every learned method picks the right relation most of the time (typing F1 83 to 95), but deciding which of the about 390 pairs of a document are related is much harder (detection F1 51 to 77). On dev, 89\% of the facts missed by M3 and M2 belong to pairs that are never predicted, and 80\% to 86\% of their false facts are on pairs without any gold relation. From M3 to the final ensemble, detection F1 gained 16 points and typing F1 only 3.
+Fig.~\ref{fig:detection} confirms the hypothesis of the project. Once a pair is known to be related, every method that reads the text picks the right relation most of the time (typing F1 83 to 95), but deciding which of the about 390 pairs of a document are related is much harder (detection F1 51 to 77). On dev, 89\% of the facts missed by M3 and M2 belong to pairs that are never predicted, and 80\% to 86\% of their false facts are on pairs without any gold relation. From M3 to the final ensemble, detection F1 gained 16 points and typing F1 only 3. The same gap holds for the baselines that read no text (M0': detection 34.2, typing 60.2): the entity types alone say which relation a related pair has much better than whether it has one.
 
 \begin{figure}[htbp]
 \centering
@@ -459,7 +469,7 @@ We compared unsupervised and supervised relation extraction on documents whose e
 All three members wrote this report and prepared the presentation.
 
 \paragraph{TODO.} % TODO: name of the member who wrote the baseline and PromptORE.
-Implemented the type-pair baseline (M0), the first version of PromptORE following the original paper, with k-means clusters (M1), and its variant with a supervised classifier on the PromptORE embeddings (M2).
+Implemented the type-pair baseline (M0) and the structural baseline (M0'), the first version of PromptORE following the original paper, with k-means clusters (M1), and its variant with a supervised classifier on the PromptORE embeddings (M2).
 TODO: what this member found the most difficult and the most interesting.
 
 \paragraph{Axel TODO.} % TODO: full name.

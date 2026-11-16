@@ -7,7 +7,7 @@ Text mining project: find the relations between **known entities** of Linked-Re-
 ```text
 Documents with known entities (Linked-Re-DocRED): mentions, types, coreference, Wikidata links
   → candidate ordered entity pairs
-  → relation methods: type-pair baseline, PromptORE + clusters, PromptORE + classifier,
+  → relation methods: type-pair and structural baselines, PromptORE + clusters, PromptORE + classifier,
     ATLOP-style classifier, document model with a partly fine-tuned encoder, ensembles
   → predicted facts with a score, or "no relation"
   → knowledge graph of the corpus: entities merged by Wikidata item, one edge per distinct fact
@@ -78,6 +78,7 @@ Test scores of Linked-Re-DocRED from the shared evaluator ([report/leaderboard.m
 | Method | Run | F1 | Ign F1 | Graph F1 |
 |---|---|---|---|---|
 | Type-pair baseline | `baseline-typepair` | 18.86 | 17.80 | 19.42 |
+| Structural baseline (no text) | `m0-structural-v2` | 21.90 | 20.39 | 22.40 |
 | PromptORE + clusters | `promptore-clusters` | 45.93 | 43.56 | 46.01 |
 | PromptORE + classifier | `promptore-classifier` | 50.41 | 48.07 | 50.70 |
 | ATLOP-style classifier, frozen encoder | `atlop-frozen` | 57.70 | 56.76 | 59.20 |
@@ -85,4 +86,4 @@ Test scores of Linked-Re-DocRED from the shared evaluator ([report/leaderboard.m
 | Document model, last 4 encoder layers trained | `doc-tune4` | 73.55 | 72.27 | 74.34 |
 | Ensemble of the document models and PromptORE + classifier | `doc-tune-ens+old` | 74.99 | 73.83 | 75.84 |
 
-Everything was trained without a GPU (Mac M4 Pro). Still to do: label efficiency, PromptORE ablations, error analyses and the final test run (section 8 of the plan).
+Everything was trained without a GPU (Mac M4 Pro). Still to do: the PromptORE ablations and the final test run (section 8 of the plan).

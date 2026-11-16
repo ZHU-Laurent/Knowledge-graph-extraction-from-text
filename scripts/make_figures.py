@@ -23,6 +23,7 @@ BLUE, ORANGE, AQUA, YELLOW, GRAY = "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "
 INK, MUTED = "#0b0b0b", "#52514e"
 METHODS = [  # run, label, family color
     ("baseline-typepair", "M0 type-pair baseline", GRAY),
+    ("m0-structural-v2", "M0' structural baseline", GRAY),
     ("promptore-clusters", "M1 PromptORE + clusters", ORANGE),
     ("promptore-classifier", "M2 PromptORE + classifier", ORANGE),
     ("atlop-frozen", "M3 ATLOP-style, frozen", BLUE),
@@ -46,6 +47,7 @@ DROPPED = [
     ("Inverse and transitivity rules", -3.77),
     ("Adaptive focal loss", -0.43),
     ("One threshold per relation\n(cross-fitted)", -0.11),
+    ("One threshold per frequency\nbucket (cross-fitted)", -0.32),
     ("Larger frozen encoder\n(roberta-large, plain head)", -2.11),
 ]
 

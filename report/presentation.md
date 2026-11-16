@@ -29,6 +29,7 @@ Documents with known entities → candidate ordered pairs → relation method �
 | Method | Idea |
 |---|---|
 | M0 | Baseline: the most frequent relation for each pair of entity types |
+| M0' | Structural baseline, still no text: types, sentence distance, mentions and position, with a detector and one classifier per relation as in M2 |
 | M1 | PromptORE: a `[MASK]` embedding per pair, k-means clusters, each cluster named after its train facts |
 | M2 | PromptORE embeddings with a supervised detector and one classifier per relation |
 | M3 | ATLOP-style classifier on the whole document (frozen BERT) |
@@ -71,6 +72,7 @@ Documents with known entities → candidate ordered pairs → relation method �
 | Larger frozen encoder (roberta-large) with the plain head | −2.1 | Without fine-tuning, a larger encoder does not help. DeBERTa only helps with the full head (+1.0) |
 | Adaptive focal loss for rare relations | −0.4 | No gain on micro or macro F1 |
 | One threshold per relation | −0.1 cross-fitted | It overfits dev: +1.4 on the documents it was tuned on |
+| Post-processing of the final ensemble: rules mined from train, one threshold per frequency bucket, a rescorer cross-fitted on dev | +0.05 / −0.3 / +0.3 | Not established: the paired bootstrap interval includes 0. The pair-grid layers already use inverse facts, chains and types; the misses are pairs with low scores everywhere |
 
 **The reasoning behind the order of the steps:** we did the error analysis of v1 before trying any fix. It showed 3 things:
 
@@ -87,6 +89,7 @@ Each fix answers one of these findings: the threshold, then a stronger encoder f
 | Method | Test F1 | Ign F1 | Graph F1 |
 |---|---|---|---|
 | M0 type-pair baseline | 18.9 | 17.8 | 19.4 |
+| M0' structural baseline | 21.9 ± 0.1 | 20.4 | 22.4 |
 | M1 PromptORE + clusters | 45.9 ± 0.4 | 43.6 | 46.0 |
 | M2 PromptORE + classifier | 50.4 ± 0.1 | 48.1 | 50.7 |
 | M3 ATLOP-style, frozen | 57.7 ± 0.1 | 56.8 | 59.2 |
@@ -96,6 +99,8 @@ Each fix answers one of these findings: the threshold, then a stronger encoder f
 
 For reference, published ATLOP fully fine-tuned with RoBERTa-large on a GPU has 77.6 F1. Our best model uses BERT-base trained on a laptop and is 2.6 points below.
 
+**Without the text:** M0' uses every structural clue of the dataset (types, distance, mentions, position) and gains only 3 points over M0 on test (+4.3 on dev, significant). Almost all of the F1 of the other methods comes from reading the text.
+
 **Q1, PromptORE against supervised methods:** PromptORE is 25 points below the best model. The gaps are significant: by paired bootstrap on dev, M3 beats M2 by 9.2 points (interval 7.8 to 10.4), and M2 beats M1 by 4.6. PromptORE is still useful in two ways:
 
 - **As a typer:** on the pairs the document model detects, M2 goes from 49.2 to 60.9 dev F1.
@@ -103,7 +108,7 @@ For reference, published ATLOP fully fine-tuned with RoBERTa-large on a GPU has 
 
 ![Detection and typing](figures/detection_vs_typing.png)
 
-**Q2, detection against typing:** every method types well, with typing F1 from 83 to 95, but detects poorly, with detection F1 from 51 to 77. The hypothesis of the project holds: the hard part is deciding which pairs are related. Most of the progress from M3 to the ensemble comes from detection (60 to 77), while typing moved from 92 to 95.
+**Q2, detection against typing:** every method that reads the text types well, with typing F1 from 83 to 95, but detects poorly, with detection F1 from 51 to 77. The hypothesis of the project holds: the hard part is deciding which pairs are related. Most of the progress from M3 to the ensemble comes from detection (60 to 77), while typing moved from 92 to 95. Even M0', which reads no text, has the same gap: detection 34, typing 60.
 
 ![Relation frequency](figures/relation_frequency.png)
 
