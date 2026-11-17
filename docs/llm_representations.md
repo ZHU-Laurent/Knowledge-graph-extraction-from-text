@@ -108,7 +108,17 @@ The `bert` rows are not filtered.
 - Cost: 62,513 API calls for section 2 and 124,343 more for section 3 (39.8 million input
   tokens in total).
 
-## 5. Reproduce
+## 5. Checks at merge time
+
+- The notebooks pin commit `5d3c818`; `src/`, `scripts/evaluate.py` and `scripts/prepare_benchmark.py` have not changed
+  since, so the candidates, the sample, the probes and the evaluator are those of `main`.
+- The two `t1k-bert` rows were recomputed locally on the Mac (MPS) with the repository's code and the same 1,000
+  documents: same sample (89,484 pairs, 22,371 related), dev F1 46.76 with the classifier (46.82 in Colab) and 42.83
+  with clusters (43.16). The gap comes from GPU arithmetic and k-means, and is within the seed spread of
+  `promptore-clusters` (0.45).
+- The DeepSeek rows cannot be recomputed without the API answers, which are not versioned.
+
+## 6. Reproduce
 
 Open a notebook of `notebooks/llm_pairs/` in Colab with a T4 GPU and run all cells:
 

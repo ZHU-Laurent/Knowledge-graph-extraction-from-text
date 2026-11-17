@@ -8,6 +8,7 @@ Text mining project: find the relations between **known entities** of Linked-Re-
 Documents with known entities (Linked-Re-DocRED): mentions, types, coreference, Wikidata links
   → candidate ordered entity pairs
   → relation methods: type-pair and structural baselines, PromptORE + clusters, PromptORE + classifier,
+    PromptORE completed by the answer of an LLM,
     ATLOP-style classifier, document model with a partly fine-tuned encoder, ensembles
   → predicted facts with a score, or "no relation"
   → knowledge graph of the corpus: entities merged by Wikidata item, one edge per distinct fact
@@ -86,4 +87,6 @@ Test scores of Linked-Re-DocRED from the shared evaluator ([report/leaderboard.m
 | Document model, last 4 encoder layers trained | `doc-tune4` | 73.55 | 72.27 | 74.34 |
 | Ensemble of the document models and PromptORE + classifier | `doc-tune-ens+old` | 74.99 | 73.83 | 75.84 |
 
-Everything was trained without a GPU (Mac M4 Pro). Still to do: the PromptORE ablations and the final test run (section 8 of the plan).
+The LLM method (M4: the BERT `[MASK]` state of PromptORE concatenated with the embedded answer of DeepSeek) has dev scores only, with 1,000 train documents and one seed: 55.98 dev F1 with the classifier and 51.86 with clusters, against 46.82 and 43.16 for PromptORE on the same documents. See [docs/llm_representations.md](docs/llm_representations.md).
+
+Everything except M4 was trained without a GPU (Mac M4 Pro); M4 ran in Colab. Still to do: the PromptORE ablations and the final test run (section 8 of the plan).
