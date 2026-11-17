@@ -32,6 +32,7 @@ Documents with known entities → candidate ordered pairs → relation method �
 | M0' | Structural baseline, still no text: types, sentence distance, mentions and position, with a detector and one classifier per relation as in M2 |
 | M1 | PromptORE: a `[MASK]` embedding per pair, k-means clusters, each cluster named after its train facts |
 | M2 | PromptORE embeddings with a supervised detector and one classifier per relation |
+| M4 | PromptORE whose `[MASK]` embedding is concatenated with the embedded answer of an LLM (DeepSeek) to "relation, head type, tail type"; everything else as in M1 and M2 |
 | M3 | ATLOP-style classifier on the whole document (frozen BERT) |
 | Document model | M3 with pair features, token layers and pair-grid layers. Then the last 4 encoder layers trained, then ensembles |
 
@@ -106,6 +107,8 @@ For reference, published ATLOP fully fine-tuned with RoBERTa-large on a GPU has 
 - **As a typer:** on the pairs the document model detects, M2 goes from 49.2 to 60.9 dev F1.
 - **As an ensemble member:** +0.5.
 
+**M4, an LLM inside PromptORE (dev only, 1,000 train documents, one seed):** adding the DeepSeek answer to the BERT embedding raises PromptORE from 46.8 to 56.0 dev F1 with the classifier and from 43.2 to 51.9 with clusters, trained on the same 1,000 documents (paired bootstrap: +9.2, interval 8.0 to 10.3). With a third of the labels it beats PromptORE trained on all 3,053 documents, but stays below M3 (58.4). The gain is mostly on detection (50.6 to 59.2) and on rare relations. A local 3B model is worse than BERT, the answer alone only equals BERT, and naming the clusters with the LLM instead of the train labels loses 15 points.
+
 ![Detection and typing](figures/detection_vs_typing.png)
 
 **Q2, detection against typing:** every method that reads the text types well, with typing F1 from 83 to 95, but detects poorly, with detection F1 from 51 to 77. The hypothesis of the project holds: the hard part is deciding which pairs are related. Most of the progress from M3 to the ensemble comes from detection (60 to 77), while typing moved from 92 to 95. Even M0', which reads no text, has the same gap: detection 34, typing 60.
@@ -160,11 +163,12 @@ A calibration step fitted on dev, such as isotonic regression, would fix this wi
 - Entities are given: there is no entity detection, coreference resolution or entity linking.
 - Most single-model results come from one seed. Differences below about 0.5 point are not established.
 - Full fine-tuning was not possible without a GPU.
+- M4 uses 1,000 train documents, one seed and an external API model, and has no test score.
 - Annotation gaps were checked: only 50 of 3,158 false facts of M3 are inverses of gold facts.
 
 **Perspectives:**
 - Full fine-tuning of a large encoder on a GPU (ATLOP and DREEAM reach 77 to 78 F1).
 - Evidence sentences (DREEAM).
-- An LLM used only for typing or for naming clusters.
+- M4 on all train documents, with several seeds and a test run; the LLM answer as an input of the document model.
 - Calibrated edge scores.
 - Rare relations: class-balanced losses, or soft cluster naming in M1.

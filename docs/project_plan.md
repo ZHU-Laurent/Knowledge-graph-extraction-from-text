@@ -66,7 +66,7 @@ The shared benchmark also fixes two small subsets for quick runs (seed 0): `trai
 | M1 | **PromptORE + clusters** | `[CLS] <context> <head> [MASK] <tail>. [SEP]` through a frozen `bert-base-uncased`, the `[MASK]` vector. One pass per pair | Train, for the detector and to name the clusters. None for the clusters | Closest to the paper |
 | M2 | **PromptORE + classifier** | Same `[MASK]` vectors | Train | Same representation as M1, typed with labels directly. The gap with M1 is the cost of typing through clusters |
 | M3 | **ATLOP-style classifier** | One pass of `bert-base-cased` per document, with entity and pair context vectors | Train | Supervised document-level reference, close to the state of the art |
-| M4 | **LLM** (optional) | The document and the pair | None or a few examples | Generalist reference, on a dev sample |
+| M4 | **LLM representations in PromptORE** ([llm_representations.md](llm_representations.md)) | The BERT `[MASK]` state concatenated with the embedded answer of an LLM (a relation phrase and the two entity types) | Train, as in M1 and M2; the LLM sees no label | What an LLM adds to the PromptORE representation. Dev only, 1,000 train documents |
 
 ### M1 and M2: PromptORE
 
@@ -86,9 +86,11 @@ The shared benchmark also fixes two small subsets for quick runs (seed 0): `trai
 - **Later versions** ([analysis_v2.md](analysis_v2.md)): the same head computed document by document (`relations/doc_model.py`), with pair features, reasoning layers over the entity-pair grid, one fact threshold chosen on dev instead of the learned one, and the last 4 layers of the encoder trained. No GPU is needed: the states that enter the trained layers are cached.
 - **Not tried:** full fine-tuning, a larger fine-tuned encoder, and [DREEAM](https://github.com/YoumiMa/dreeam), which also predicts evidence sentences.
 
-### M4: LLM (optional)
+### M4: LLM representations in PromptORE
 
 Published zero-shot results are weak, about 18 F1 on the Re-DocRED test set (section 6). We therefore test it where it is most useful: typing pairs accepted by a detector, or naming PromptORE clusters, on a fixed sample of dev documents.
+
+As run ([llm_representations.md](llm_representations.md)): the LLM answer of a pair is embedded and concatenated with the PromptORE `[MASK]` state, everything else is M1 and M2. Naming the clusters with the LLM was tried and is worse than naming them with the train labels.
 
 ## 5. Graph construction
 
@@ -194,7 +196,7 @@ Typing F1 is between 83 and 95 while detection F1 is between 51 and 77: detectio
 | 8 | Dropped on 2026-11-12: FewRel reproduction on NYT (one dataset only) | |
 | 9 | Done: experiment B, label efficiency ([label_efficiency.md](../report/label_efficiency.md)) and calibration; still open: experiment C (PromptORE ablations) | 5 to 7 |
 | 10 | 3 seeds per method (done for v1: std 0.1 to 0.5 point), then test once with `test_status: final` | 4 to 9 |
-| 11 | Optional: DREEAM, LLM | 5 |
+| 11 | LLM done as M4 ([llm_representations.md](llm_representations.md)): dev F1 55.98 against 46.82 for PromptORE on the same 1,000 train documents, one seed, no test run. DREEAM not done | 5 |
 | 12 | Report and slides | All above |
 
 ## 9. Risks

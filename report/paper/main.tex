@@ -103,7 +103,7 @@ Each entity has a type (PER, ORG, LOC, TIME, NUM or MISC), its mentions with the
 
 \subsection{Workflow}\label{sec:workflow}
 
-The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared six families of relation methods, from the simplest to the strongest. We describe for each one what comes from the literature and what we implemented on top of it.
+The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared seven families of relation methods, from the simplest to the strongest. We describe for each one what comes from the literature and what we implemented on top of it.
 
 \subsubsection{M0: type-pair baseline}
 No text is read. For each key (head type, tail type, whether the two entities share a sentence), the train labels give $P(r \mid \text{key})$, and a pair receives every relation whose probability passes a threshold tuned on a dev subset. It shows how much the entity types alone explain.
@@ -120,6 +120,9 @@ Still no text, but all the structure the dataset gives for free, modelled like M
 \paragraph{M1, PromptORE + clusters.} k-means groups the embeddings of the related train pairs without their labels. To build a graph, a cluster must be named: each cluster scores each relation by the share of its train pairs that carry it, and a pair receives the scores of its nearest cluster. The fact score is $P(\text{related}) \times$ share of the relation in the cluster. $k=400$ is chosen on dev among 100, 200 and 400.
 
 \paragraph{M2, PromptORE + classifier.} Same embeddings and detector, but typing uses one logistic regression per relation trained on the related pairs. The fact score is $P(\text{related}) \times P(r \mid \text{related})$. The gap between M1 and M2 measures the cost of typing through unsupervised clusters.
+
+\subsubsection{M4: LLM representations of a pair in PromptORE}\label{sec:llm}
+A large language model is not run end to end: it replaces or completes the \emph{representation of a pair} inside M1 and M2, and everything else (candidates, context, train sample, detector, classifiers, clusters, thresholds) is the code of M1 and M2, so the gap with PromptORE measures the representation only. The LLM reads the same context as PromptORE and the two entity names, and answers one line, \texttt{relation | head type | tail type}, where the relation is a free phrase of one to five words or \texttt{none}; it never sees the 96 relations or a label. The answer is embedded with a sentence encoder (\texttt{all-mpnet-base-v2}~\cite{reimers2019sbert}). We compared the hidden state and the answer of a local \texttt{Qwen2.5-3B-Instruct}~\cite{qwen2024qwen25}, the answer of DeepSeek (\texttt{deepseek-chat}~\cite{deepseek2024v3}) through its API, and the concatenation of the BERT \texttt{[MASK]} state (centred, L2-normalised) with that answer. To bound the API cost, the method is trained on 1,000 train documents (89,484 sampled pairs), and the dev pairs whose BERT detection probability is below 0.02 are not sent to the API and get no fact (92,981 of the 187,939 dev pairs; the threshold costs 0.1 F1 point on the 100 dev documents used to choose it, which were all sent).
 
 \subsubsection{M3: ATLOP-style classifier on a frozen encoder}\label{sec:atlop}
 
@@ -314,6 +317,25 @@ Final ensemble & \textbf{74.99} & \textbf{73.83} & \textbf{76.51} & \textbf{95.4
 
 PromptORE is still useful in two ways. As a typer on the pairs detected by the document model, M2 rises from 49.2 to 60.9 dev F1 and M1 from 44.6 to 55.7: about 11 points of PromptORE were lost at detection alone. As a member of an ensemble, M2 adds +0.5 dev F1 because it finds facts that the supervised models miss: in v1, M3 and M2 share 5,967 correct facts but each finds about 2,500 that the other misses.
 
+\subsubsection{An LLM inside PromptORE (M4)}
+
+M4 has no test run and was trained on 1,000 train documents, so it is compared on dev with PromptORE recomputed on the same 1,000 documents (Table~\ref{tab:llm}; one seed). Adding the DeepSeek answer to the BERT state gains 9.2 F1 with the classifier (paired bootstrap interval +8.0 to +10.3) and 8.7 with clusters (+7.7 to +9.7). With a third of the train documents, both rows are above PromptORE trained on all 3,053 (49.2 and 44.6), but below M3 (58.4). The gain is mostly on detection (50.6 to 59.2) and on rare relations (macro F1 26.3 to 39.1), and on pairs that share no sentence (43.2 to 53.1 F1). On the smaller train\_debug/dev\_debug split (300 and 100 documents), the answer alone is no better than BERT (+0.65, interval $-2.5$ to $+4.1$), so the gain comes from combining two representations that carry different information. The local 3B model is worse than BERT, as a hidden state (37.0 against 43.0 with the classifier) and as an answer (28.8). Two uses of the LLM fail: naming the BERT clusters with one of the 96 relations from eight of their pairs gives 22.8 F1 against 37.6 with the train labels, and using no label at all (a pair is related when the answer is not \texttt{none}) gives 17.0 F1, the level of M0, because DeepSeek answers \texttt{none} for 49\% of the related pairs.
+
+\begin{table}[htbp]
+\caption{M4 against PromptORE, both trained on the same 1,000 train documents, dev scores, seed 0.}\label{tab:llm}
+\centering
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Representation, typing & F1 & Ign F1 & Detect. F1 & Typing F1 & Macro F1 \\
+\midrule
+BERT (PromptORE), clusters (M1) & 43.16 & 41.17 & 49.16 & 81.50 & 18.67 \\
+BERT (PromptORE), classifier (M2) & 46.82 & 44.65 & 50.62 & 86.19 & 26.31 \\
+BERT + DeepSeek answer, clusters & 51.86 & 49.88 & 57.81 & 84.71 & 29.21 \\
+BERT + DeepSeek answer, classifier & \textbf{55.98} & \textbf{54.03} & \textbf{59.18} & \textbf{90.11} & \textbf{39.06} \\
+\botrule
+\end{tabular}
+\end{table}
+
 \subsubsection{What each change brings}
 
 Fig.~\ref{fig:progression} and Table~\ref{tab:gains} trace the dev F1 after each change, and the changes we dropped.
@@ -366,7 +388,7 @@ Rescorer on train rules and document features & 75.36 & +0.31 \\
 
 \subsubsection{Detection against typing (Q2)}
 
-Fig.~\ref{fig:detection} confirms the hypothesis of the project. Once a pair is known to be related, every method that reads the text picks the right relation most of the time (typing F1 83 to 95), but deciding which of the about 390 pairs of a document are related is much harder (detection F1 51 to 77). On dev, 89\% of the facts missed by M3 and M2 belong to pairs that are never predicted, and 80\% to 86\% of their false facts are on pairs without any gold relation. From M3 to the final ensemble, detection F1 gained 16 points and typing F1 only 3. The same gap holds for the baselines that read no text (M0': detection 34.2, typing 60.2): the entity types alone say which relation a related pair has much better than whether it has one.
+Fig.~\ref{fig:detection} confirms the hypothesis of the project. Once a pair is known to be related, every method that reads the text picks the right relation most of the time (typing F1 83 to 95), but deciding which of the about 390 pairs of a document are related is much harder (detection F1 51 to 77). On dev, 89\% of the facts missed by M3 and M2 belong to pairs that are never predicted, and 80\% to 86\% of their false facts are on pairs without any gold relation. From M3 to the final ensemble, detection F1 gained 16 points and typing F1 only 3, and the LLM answer of M4 also helps PromptORE mostly at detection (+8.6 against +3.9 for typing). The same gap holds for the baselines that read no text (M0': detection 34.2, typing 60.2): the entity types alone say which relation a related pair has much better than whether it has one.
 
 \begin{figure}[htbp]
 \centering
@@ -462,7 +484,7 @@ Training diverged & Learning rate $3\times10^{-4}$ lowered to $10^{-4}$ & Stable
 %% ---------------------------------------------------------------------------
 \section{Conclusion}\label{sec:conclusion}
 
-We compared unsupervised and supervised relation extraction on documents whose entities are known, with one benchmark and one evaluator, and assembled the predicted facts into a knowledge graph. The answers to our questions are clear. \textbf{Q1:} PromptORE stays 25 points below the best supervised model, but is useful as a typer and as an ensemble member. \textbf{Q2:} detection, not typing, is the bottleneck for every method. \textbf{Q3:} the supervised document model needs few labels: 5\% of the train documents are enough to beat PromptORE trained on all of them. \textbf{Q4:} the graph reaches 75.8 F1, edges confirmed by several documents are almost always right, and scores rank facts reliably but need calibration to be read as probabilities. On a laptop, partial fine-tuning and ensembles bring a BERT-base model to 75.0 F1, 2.6 points below the published fully fine-tuned RoBERTa-large ATLOP.
+We compared unsupervised and supervised relation extraction on documents whose entities are known, with one benchmark and one evaluator, and assembled the predicted facts into a knowledge graph. The answers to our questions are clear. \textbf{Q1:} PromptORE stays 25 points below the best supervised model, but is useful as a typer and as an ensemble member; completing its representation with the answer of an LLM gains 9 dev F1 points. \textbf{Q2:} detection, not typing, is the bottleneck for every method. \textbf{Q3:} the supervised document model needs few labels: 5\% of the train documents are enough to beat PromptORE trained on all of them. \textbf{Q4:} the graph reaches 75.8 F1, edges confirmed by several documents are almost always right, and scores rank facts reliably but need calibration to be read as probabilities. On a laptop, partial fine-tuning and ensembles bring a BERT-base model to 75.0 F1, 2.6 points below the published fully fine-tuned RoBERTa-large ATLOP.
 
 \subsection{Contribution of each member}
 
@@ -473,7 +495,7 @@ Implemented the type-pair baseline (M0) and the structural baseline (M0'), the f
 TODO: what this member found the most difficult and the most interesting.
 
 \paragraph{Axel TODO.} % TODO: full name.
-Designed the global evaluation methodology: the shared benchmark and evaluator (branch \texttt{eval/shared-benchmark}) on which every method of this report is scored, with one prediction format, one script for every metric and a common leaderboard.
+Designed the global evaluation methodology: the shared benchmark and evaluator (branch \texttt{eval/shared-benchmark}) on which every method of this report is scored, with one prediction format, one script for every metric and a common leaderboard. Also designed and ran the LLM representations of a pair inside PromptORE (M4), with a local model and the DeepSeek API.
 TODO: what Axel found the most difficult and the most interesting.
 
 \paragraph{Laurent Zhu.} Implemented the ATLOP-style classifier (M3) and everything added to it to reach the best F1: the document-level model, the threshold chosen on dev, the pair features, the token and pair-grid layers, the other encoders, the partial fine-tuning of the last encoder layers from cached states, the ensembles and PromptORE as a typer. Also built the corpus graph and its HTML viewer, extended the shared evaluator (Ign F1, detection and typing F1, graph metrics, seeds, bootstrap intervals and paired tests), and ran the experiments on labels (Q3) and calibration (Q4).
@@ -481,11 +503,11 @@ TODO: what Laurent found the most difficult and the most interesting.
 
 \subsection{Limits}
 
-The entities are given: a real system must also find, resolve and link them, and its errors would add to ours. We use one dataset, in English, built from Wikipedia introductions. Most single-model results come from one seed; seeds of the same model differ by about 0.3 point on dev, so gains below 0.5 point are not established. Encoders were never fully fine-tuned, and partial fine-tuning was only tried on BERT-base with 2 and 4 layers. The ensemble weights and thresholds are chosen on dev, which makes the dev scores slightly optimistic. Re-DocRED still misses some true facts, so precision may be slightly underestimated, although our checks suggest the effect is small.
+The entities are given: a real system must also find, resolve and link them, and its errors would add to ours. We use one dataset, in English, built from Wikipedia introductions. Most single-model results come from one seed; seeds of the same model differ by about 0.3 point on dev, so gains below 0.5 point are not established. Encoders were never fully fine-tuned, and partial fine-tuning was only tried on BERT-base with 2 and 4 layers. M4 was trained on 1,000 train documents with one seed, depends on an external model that may change, and has no test score. The ensemble weights and thresholds are chosen on dev, which makes the dev scores slightly optimistic. Re-DocRED still misses some true facts, so precision may be slightly underestimated, although our checks suggest the effect is small.
 
 \subsection{Perspectives}
 
-Full fine-tuning of a large encoder on a GPU, as in ATLOP and DREEAM, should close most of the remaining gap; DREEAM would also give evidence sentences for each fact, useful to justify the edges of the graph. Rare relations could benefit from class-balanced losses, and M1 from soft cluster naming with several relations per cluster. The edge scores should be calibrated on dev. A large language model could be used where PromptORE is weakest, to name clusters or to type the pairs that the document model detects. Finally, replacing the gold entities by predicted ones would measure the cost of the full pipeline.
+Full fine-tuning of a large encoder on a GPU, as in ATLOP and DREEAM, should close most of the remaining gap; DREEAM would also give evidence sentences for each fact, useful to justify the edges of the graph. Rare relations could benefit from class-balanced losses, and M1 from soft cluster naming with several relations per cluster. The edge scores should be calibrated on dev. M4 shows that an LLM answer completes the PromptORE representation; it should be trained on all train documents with several seeds, scored on test, and tried as an input of the document model, while naming clusters with an LLM did not work. Finally, replacing the gold entities by predicted ones would measure the cost of the full pipeline.
 
 \bibliography{references}
 
