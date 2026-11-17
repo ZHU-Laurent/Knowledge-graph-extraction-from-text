@@ -32,9 +32,9 @@ Documents with known entities → candidate ordered pairs → relation method �
 | M0' | Structural baseline, still no text: types, sentence distance, mentions and position, with a detector and one classifier per relation as in M2 |
 | M1 | PromptORE: a `[MASK]` embedding per pair, k-means clusters, each cluster named after its train facts |
 | M2 | PromptORE embeddings with a supervised detector and one classifier per relation |
-| M4 | PromptORE whose `[MASK]` embedding is concatenated with the embedded answer of an LLM (DeepSeek) to "relation, head type, tail type"; everything else as in M1 and M2 |
 | M3 | ATLOP-style classifier on the whole document (frozen BERT) |
 | Document model | M3 with pair features, token layers and pair-grid layers. Then the last 4 encoder layers trained, then ensembles |
+| M4 | PromptORE whose `[MASK]` embedding is concatenated with the embedded answer of an LLM (DeepSeek) to "relation, head type, tail type"; everything else as in M1 and M2. Added last, it extends PromptORE |
 
 ## 3. Difficulties and how we handled them
 

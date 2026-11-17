@@ -103,7 +103,7 @@ Each entity has a type (PER, ORG, LOC, TIME, NUM or MISC), its mentions with the
 
 \subsection{Workflow}\label{sec:workflow}
 
-The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared seven families of relation methods, from the simplest to the strongest. We describe for each one what comes from the literature and what we implemented on top of it.
+The pipeline has four steps: (1) candidate ordered pairs of known entities; (2) a relation method that scores each candidate for each relation; (3) a fact threshold that keeps the facts; (4) the corpus graph. We compared seven families of relation methods: M0 to M3 and the document model from the simplest to the strongest, then M4, which completes M1 and M2 with a large language model. We describe for each one what comes from the literature and what we implemented on top of it.
 
 \subsubsection{M0: type-pair baseline}
 No text is read. For each key (head type, tail type, whether the two entities share a sentence), the train labels give $P(r \mid \text{key})$, and a pair receives every relation whose probability passes a threshold tuned on a dev subset. It shows how much the entity types alone explain.
@@ -120,9 +120,6 @@ Still no text, but all the structure the dataset gives for free, modelled like M
 \paragraph{M1, PromptORE + clusters.} k-means groups the embeddings of the related train pairs without their labels. To build a graph, a cluster must be named: each cluster scores each relation by the share of its train pairs that carry it, and a pair receives the scores of its nearest cluster. The fact score is $P(\text{related}) \times$ share of the relation in the cluster. $k=400$ is chosen on dev among 100, 200 and 400.
 
 \paragraph{M2, PromptORE + classifier.} Same embeddings and detector, but typing uses one logistic regression per relation trained on the related pairs. The fact score is $P(\text{related}) \times P(r \mid \text{related})$. The gap between M1 and M2 measures the cost of typing through unsupervised clusters.
-
-\subsubsection{M4: LLM representations of a pair in PromptORE}\label{sec:llm}
-A large language model is not run end to end: it replaces or completes the \emph{representation of a pair} inside M1 and M2, and everything else (candidates, context, train sample, detector, classifiers, clusters, thresholds) is the code of M1 and M2, so the gap with PromptORE measures the representation only. The LLM reads the same context as PromptORE and the two entity names, and answers one line, \texttt{relation | head type | tail type}, where the relation is a free phrase of one to five words or \texttt{none}; it never sees the 96 relations or a label. The answer is embedded with a sentence encoder (\texttt{all-mpnet-base-v2}~\cite{reimers2019sbert}). We compared the hidden state and the answer of a local \texttt{Qwen2.5-3B-Instruct}~\cite{qwen2024qwen25}, the answer of DeepSeek (\texttt{deepseek-chat}~\cite{deepseek2024v3}) through its API, and the concatenation of the BERT \texttt{[MASK]} state (centred, L2-normalised) with that answer. To bound the API cost, the method is trained on 1,000 train documents (89,484 sampled pairs), and the dev pairs whose BERT detection probability is below 0.02 are not sent to the API and get no fact (92,981 of the 187,939 dev pairs; the threshold costs 0.1 F1 point on the 100 dev documents used to choose it, which were all sent).
 
 \subsubsection{M3: ATLOP-style classifier on a frozen encoder}\label{sec:atlop}
 
@@ -272,6 +269,9 @@ The error analysis of M3 (Section~\ref{sec:results}) showed that 89\% of its mis
 \end{figure}
 
 
+\subsubsection{M4: LLM representations of a pair in PromptORE}\label{sec:llm}
+M4 is described last because it was added at the end of the project and extends M1 and M2, not the document model; it scores between M2 and M3. A large language model is not run end to end: it replaces or completes the \emph{representation of a pair} inside M1 and M2, and everything else (candidates, context, train sample, detector, classifiers, clusters, thresholds) is the code of M1 and M2, so the gap with PromptORE measures the representation only. The LLM reads the same context as PromptORE and the two entity names, and answers one line, \texttt{relation | head type | tail type}, where the relation is a free phrase of one to five words or \texttt{none}; it never sees the 96 relations or a label. The answer is embedded with a sentence encoder (\texttt{all-mpnet-base-v2}~\cite{reimers2019sbert}). We compared the hidden state and the answer of a local \texttt{Qwen2.5-3B-Instruct}~\cite{qwen2024qwen25}, the answer of DeepSeek (\texttt{deepseek-chat}~\cite{deepseek2024v3}) through its API, and the concatenation of the BERT \texttt{[MASK]} state (centred, L2-normalised) with that answer. To bound the API cost, the method is trained on 1,000 train documents (89,484 sampled pairs), and the dev pairs whose BERT detection probability is below 0.02 are not sent to the API and get no fact (92,981 of the 187,939 dev pairs; the threshold costs 0.1 F1 point on the 100 dev documents used to choose it, which were all sent).
+
 \subsubsection{Corpus graph}\label{sec:graph}
 
 Entities linked to the same Wikidata item become one node across documents; dates and numbers merge on their normalized text; other entities stay local to their document, since merging them on the name could join different entities. Facts with the same (head node, relation, tail node) become one edge whose confidence is the noisy-or of its document scores, $1-\prod_d (1-s_d)$, so that a fact found in several documents becomes more certain. Each edge keeps its supporting documents and scores. We found and fixed a bug where placeholder identifiers of the dataset (\texttt{\#ignored\#} for dates) were taken for Wikidata items and merged all dates into one node. We also built an HTML viewer that draws the gold graph next to the predicted graph of a run, by document or around one entity, with correct, missed and wrong edges and the evidence sentences of each fact.
@@ -316,25 +316,6 @@ Final ensemble & \textbf{74.99} & \textbf{73.83} & \textbf{76.51} & \textbf{95.4
 \end{table}
 
 PromptORE is still useful in two ways. As a typer on the pairs detected by the document model, M2 rises from 49.2 to 60.9 dev F1 and M1 from 44.6 to 55.7: about 11 points of PromptORE were lost at detection alone. As a member of an ensemble, M2 adds +0.5 dev F1 because it finds facts that the supervised models miss: in v1, M3 and M2 share 5,967 correct facts but each finds about 2,500 that the other misses.
-
-\subsubsection{An LLM inside PromptORE (M4)}
-
-M4 has no test run and was trained on 1,000 train documents, so it is compared on dev with PromptORE recomputed on the same 1,000 documents (Table~\ref{tab:llm}; one seed). Adding the DeepSeek answer to the BERT state gains 9.2 F1 with the classifier (paired bootstrap interval +8.0 to +10.3) and 8.7 with clusters (+7.7 to +9.7). With a third of the train documents, both rows are above PromptORE trained on all 3,053 (49.2 and 44.6), but below M3 (58.4). The gain is mostly on detection (50.6 to 59.2) and on rare relations (macro F1 26.3 to 39.1), and on pairs that share no sentence (43.2 to 53.1 F1). On the smaller train\_debug/dev\_debug split (300 and 100 documents), the answer alone is no better than BERT (+0.65, interval $-2.5$ to $+4.1$), so the gain comes from combining two representations that carry different information. The local 3B model is worse than BERT, as a hidden state (37.0 against 43.0 with the classifier) and as an answer (28.8). Two uses of the LLM fail: naming the BERT clusters with one of the 96 relations from eight of their pairs gives 22.8 F1 against 37.6 with the train labels, and using no label at all (a pair is related when the answer is not \texttt{none}) gives 17.0 F1, the level of M0, because DeepSeek answers \texttt{none} for 49\% of the related pairs.
-
-\begin{table}[htbp]
-\caption{M4 against PromptORE, both trained on the same 1,000 train documents, dev scores, seed 0.}\label{tab:llm}
-\centering
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-Representation, typing & F1 & Ign F1 & Detect. F1 & Typing F1 & Macro F1 \\
-\midrule
-BERT (PromptORE), clusters (M1) & 43.16 & 41.17 & 49.16 & 81.50 & 18.67 \\
-BERT (PromptORE), classifier (M2) & 46.82 & 44.65 & 50.62 & 86.19 & 26.31 \\
-BERT + DeepSeek answer, clusters & 51.86 & 49.88 & 57.81 & 84.71 & 29.21 \\
-BERT + DeepSeek answer, classifier & \textbf{55.98} & \textbf{54.03} & \textbf{59.18} & \textbf{90.11} & \textbf{39.06} \\
-\botrule
-\end{tabular}
-\end{table}
 
 \subsubsection{What each change brings}
 
@@ -385,6 +366,25 @@ Rescorer on train rules and document features & 75.36 & +0.31 \\
 \item \textbf{The adaptive focal loss} of KD-DocRE~\cite{tan2022kddocre}, meant for the long tail, did not improve micro or macro F1 in our frozen setting.
 \item \textbf{Post-processing the final ensemble brings nothing established.} We rescored its facts down to a score of 0.05 (the candidates hold 88\% of the gold facts, against 72\% kept): hard rules mined from train (relation and entity types never seen together, one tail for functional relations), one threshold per frequency bucket, and a gradient boosting rescorer fitted on four folds of dev and applied to the fifth, whose features are the member scores, the other relations of the pair and of the head, the reverse fact, the type statistics, two-step chain rules mined from train (386 rules), the sentence distance and the predictions of the other documents for the same Wikidata fact. The best variant gains +0.31 dev F1, but a paired bootstrap interval includes 0 and a second fold draw gives +0.07. Only a feature telling whether the Wikidata fact is in the train graph gives a significant gain (+0.4 to +0.5), and it is mostly memorisation (+0.25 Ign F1). The pair-grid layers, the type inputs and the encoder already carry this information; the remaining errors are pairs with low scores everywhere, which no score feature can recover.
 \end{itemize}
+
+\subsubsection{An LLM inside PromptORE (M4)}
+
+M4 has no test run and was trained on 1,000 train documents, so it is compared on dev with PromptORE recomputed on the same 1,000 documents (Table~\ref{tab:llm}; one seed). Adding the DeepSeek answer to the BERT state gains 9.2 F1 with the classifier (paired bootstrap interval +8.0 to +10.3) and 8.7 with clusters (+7.7 to +9.7). With a third of the train documents, both rows are above PromptORE trained on all 3,053 (49.2 and 44.6), but below M3 (58.4). The gain is mostly on detection (50.6 to 59.2) and on rare relations (macro F1 26.3 to 39.1), and on pairs that share no sentence (43.2 to 53.1 F1). On the smaller train\_debug/dev\_debug split (300 and 100 documents), the answer alone is no better than BERT (+0.65, interval $-2.5$ to $+4.1$), so the gain comes from combining two representations that carry different information. The local 3B model is worse than BERT, as a hidden state (37.0 against 43.0 with the classifier) and as an answer (28.8). Two uses of the LLM fail: naming the BERT clusters with one of the 96 relations from eight of their pairs gives 22.8 F1 against 37.6 with the train labels, and using no label at all (a pair is related when the answer is not \texttt{none}) gives 17.0 F1, the level of M0, because DeepSeek answers \texttt{none} for 49\% of the related pairs.
+
+\begin{table}[htbp]
+\caption{M4 against PromptORE, both trained on the same 1,000 train documents, dev scores, seed 0.}\label{tab:llm}
+\centering
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Representation, typing & F1 & Ign F1 & Detect. F1 & Typing F1 & Macro F1 \\
+\midrule
+BERT (PromptORE), clusters (M1) & 43.16 & 41.17 & 49.16 & 81.50 & 18.67 \\
+BERT (PromptORE), classifier (M2) & 46.82 & 44.65 & 50.62 & 86.19 & 26.31 \\
+BERT + DeepSeek answer, clusters & 51.86 & 49.88 & 57.81 & 84.71 & 29.21 \\
+BERT + DeepSeek answer, classifier & \textbf{55.98} & \textbf{54.03} & \textbf{59.18} & \textbf{90.11} & \textbf{39.06} \\
+\botrule
+\end{tabular}
+\end{table}
 
 \subsubsection{Detection against typing (Q2)}
 
