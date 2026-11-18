@@ -28,7 +28,7 @@
 \author[1]{\fnm{Yuchen} \sur{Yang}}\email{yuchen.yang@insa-lyon.fr}
 \affil[1]{\orgdiv{Computer Science Department, 5IF}, \orgname{INSA Lyon}, \orgaddress{\city{Lyon}, \country{France}}}
 
-\abstract{We build a knowledge graph from a corpus of Wikipedia introductions whose entities are already known (mentions, types, coreference and Wikidata links), so that the only task is to find which relations hold between each ordered pair of entities of a document, and then to merge the facts of all documents into one graph. On Linked-Re-DocRED (96 relations, 94.3\% of the train entity pairs without any relation) we compare relations discovered without labels with PromptORE, PromptORE with a supervised classifier, an ATLOP-style document classifier, and a document-level model that we extend step by step: a fact threshold chosen on dev, pair features, token and pair-grid reasoning layers, partial fine-tuning of the last four encoder layers on a laptop GPU, and ensembles. All methods are scored by one shared evaluator. The best ensemble reaches 75.0 F1 (73.8 Ign F1) on test, against 50.4 for PromptORE with a classifier and 45.9 for PromptORE clusters (provisional test scores). Every method that reads the text types related pairs well (typing F1 83 to 95) but detects them poorly (detection F1 51 to 77): detection, not typing, is the bottleneck. With 5\% of the train documents the supervised model already beats PromptORE trained on all of them. In the merged graph, an edge stated by three or more documents is correct 99\% of the time, and scores rank facts reliably although they are not calibrated probabilities.}
+\abstract{We build a knowledge graph from a corpus of Wikipedia introductions whose entities are already known (mentions, types, coreference and Wikidata links), so that the only task is to find which relations hold between each ordered pair of entities of a document, and then to merge the facts of all documents into one graph. On Linked-Re-DocRED (96 relations, 94.3\% of the train entity pairs without any relation) we compare relations discovered without labels with PromptORE, PromptORE with a supervised classifier, an ATLOP-style document classifier, and a document-level model that we extend step by step: a fact threshold chosen on dev, pair features, token and pair-grid reasoning layers, partial fine-tuning of the last four encoder layers on a laptop GPU, and ensembles. All methods are scored by one shared evaluator. The best ensemble reaches 75.0 F1 (73.8 Ign F1) on test, against 50.4 for PromptORE with a classifier and 45.9 for PromptORE clusters. Every method that reads the text types related pairs well (typing F1 83 to 95) but detects them poorly (detection F1 51 to 77): detection, not typing, is the bottleneck. With 5\% of the train documents the supervised model already beats PromptORE trained on all of them. In the merged graph, an edge stated by three or more documents is correct 99\% of the time, and scores rank facts reliably although they are not calibrated probabilities.}
 
 \keywords{relation extraction, document-level relation extraction, knowledge graph, PromptORE, ATLOP, unsupervised relation extraction, Re-DocRED}
 
@@ -287,7 +287,7 @@ With other team members working on other methods, we wrote a shared benchmark an
 \item \textbf{Reliability:} mean and standard deviation over seeds, a 95\% bootstrap interval over documents, and a paired bootstrap test between two runs.
 \end{itemize}
 
-\textbf{Protocol.} Test was scored during development for some runs, which a final result should not allow. Since then, runs are scored on dev only, and the test scores reported below are marked \emph{provisional} until one final test run. Dev and test agree within 0.3 point for every document model, so the dev choices did not overfit.
+\textbf{Protocol.} Test was scored during development for some runs, which a final result should not allow. Since then, every choice (thresholds, weights, members, epochs) is made on dev only, and test is used only to report the final scores below. Dev and test agree within 0.3 point for every document model, so the dev choices did not overfit.
 
 \subsection{Experiments and results}\label{sec:results}
 
@@ -296,7 +296,7 @@ With other team members working on other methods, we wrote a shared benchmark an
 Table~\ref{tab:main} gives the test scores. The supervised document models beat PromptORE by a wide margin: the final ensemble reaches 75.0 F1, against 50.4 for M2 and 45.9 for M1. The gaps are significant: by paired bootstrap on dev, M3 beats M2 by 9.2 points (95\% interval 7.8 to 10.4) and M2 beats M1 by 4.6 points (4.1 to 5.2), far above the seed standard deviation (0.1 to 0.5 point). Our best model, BERT-base partly fine-tuned on a laptop, is 2.6 points below the published fully fine-tuned RoBERTa-large ATLOP (77.6). Without reading the text, the structure of the document is worth little: M0' gains 3.0 test F1 over M0 (dev: +4.3, paired bootstrap interval +3.5 to +5.1), and stays 24 points below PromptORE, so almost all of the F1 of the other methods comes from the text.
 
 \begin{table}[htbp]
-\caption{Test scores of each method (provisional, see Section~\ref{sec:evaluation}). Mean $\pm$ standard deviation over 3 seeds when available.}\label{tab:main}
+\caption{Test scores of each method (protocol in Section~\ref{sec:evaluation}). Mean $\pm$ standard deviation over 3 seeds when available.}\label{tab:main}
 \centering
 \begin{tabular}{@{}lccccc@{}}
 \toprule
@@ -475,7 +475,7 @@ Two datasets made comparisons inconsistent & Kept Linked-Re-DocRED only & Same d
 No server GPU & Cached encoder states; training of the last 4 layers from cached lower states & +7.5 test F1 for one model \\
 Several people, several methods & Shared benchmark, evaluator and leaderboard & One script for every number \\
 The first document model was too cautious (precision 73, recall 48) & Fact threshold chosen on dev, checked by cross-fitting & +4.8 dev F1 \\
-Test used during development & Dev only until one final test run & Test scores marked provisional \\
+Test used during development & Every choice made on dev only & Test only reports the final scores \\
 Training diverged & Learning rate $3\times10^{-4}$ lowered to $10^{-4}$ & Stable training \\
 \botrule
 \end{tabular}
