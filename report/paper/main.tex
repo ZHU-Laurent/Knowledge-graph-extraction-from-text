@@ -23,10 +23,9 @@
 
 \title[Knowledge graph extraction from documents with known entities]{Knowledge Graph Extraction from Documents with Known Entities: Unsupervised PromptORE against Supervised Document-Level Relation Extraction}
 
-%% TODO: complete the list of team members, their full names and e-mail addresses.
-\author*[1]{\fnm{Laurent} \sur{Zhu}}\email{TODO}
-\author[1]{\fnm{Axel} \sur{TODO}}\email{TODO}
-\author[1]{\fnm{TODO} \sur{TODO}}\email{TODO} % TODO: git author "baerjiuu", real name unknown
+\author[1]{\fnm{Xingran} \sur{Quan}}\email{xingran.quan@insa-lyon.fr}
+\author*[1]{\fnm{Laurent} \sur{Zhu}}\email{laurent.zhu@insa-lyon.fr}
+\author[1]{\fnm{Yuchen} \sur{Yang}}\email{yuchen.yang@insa-lyon.fr}
 \affil[1]{\orgdiv{Computer Science Department, 5IF}, \orgname{INSA Lyon}, \orgaddress{\city{Lyon}, \country{France}}}
 
 \abstract{We build a knowledge graph from a corpus of Wikipedia introductions whose entities are already known (mentions, types, coreference and Wikidata links), so that the only task is to find which relations hold between each ordered pair of entities of a document, and then to merge the facts of all documents into one graph. On Linked-Re-DocRED (96 relations, 94.3\% of the train entity pairs without any relation) we compare relations discovered without labels with PromptORE, PromptORE with a supervised classifier, an ATLOP-style document classifier, and a document-level model that we extend step by step: a fact threshold chosen on dev, pair features, token and pair-grid reasoning layers, partial fine-tuning of the last four encoder layers on a laptop GPU, and ensembles. All methods are scored by one shared evaluator. The best ensemble reaches 75.0 F1 (73.8 Ign F1) on test, against 50.4 for PromptORE with a classifier and 45.9 for PromptORE clusters (provisional test scores). Every method that reads the text types related pairs well (typing F1 83 to 95) but detects them poorly (detection F1 51 to 77): detection, not typing, is the bottleneck. With 5\% of the train documents the supervised model already beats PromptORE trained on all of them. In the merged graph, an edge stated by three or more documents is correct 99\% of the time, and scores rank facts reliably although they are not calibrated probabilities.}
@@ -475,6 +474,7 @@ Two datasets made comparisons inconsistent & Kept Linked-Re-DocRED only & Same d
 1.19 million train pairs, one BERT pass per pair for PromptORE & Sample of 3 unrelated pairs per related pair, with weights; embeddings cached & 271,232 embeddings computed once \\
 No server GPU & Cached encoder states; training of the last 4 layers from cached lower states & +7.5 test F1 for one model \\
 Several people, several methods & Shared benchmark, evaluator and leaderboard & One script for every number \\
+The first document model was too cautious (precision 73, recall 48) & Fact threshold chosen on dev, checked by cross-fitting & +4.8 dev F1 \\
 Test used during development & Dev only until one final test run & Test scores marked provisional \\
 Training diverged & Learning rate $3\times10^{-4}$ lowered to $10^{-4}$ & Stable training \\
 \botrule
@@ -490,16 +490,14 @@ We compared unsupervised and supervised relation extraction on documents whose e
 
 All three members wrote this report and prepared the presentation.
 
-\paragraph{TODO.} % TODO: name of the member who wrote the baseline and PromptORE.
-Implemented the type-pair baseline (M0) and the structural baseline (M0'), the first version of PromptORE following the original paper, with k-means clusters (M1), and its variant with a supervised classifier on the PromptORE embeddings (M2).
-TODO: what this member found the most difficult and the most interesting.
+\paragraph{Xingran Quan.} Designed the global evaluation methodology: the shared benchmark and evaluator on which every method of this report is scored, with fixed subsets, one prediction format, one script and Colab cell for every metric, and a common leaderboard. Implemented the type-pair baseline (M0), reproduced PromptORE on FewRel NYT and PubMed and compared LLM states and phrases with it, and designed and ran the LLM representations of a pair inside PromptORE (M4), with a local model and the DeepSeek API.
+The hardest part was to make several people, scripts and datasets comparable; the most interesting, that an LLM answer helps PromptORE mostly through detection.
 
-\paragraph{Axel TODO.} % TODO: full name.
-Designed the global evaluation methodology: the shared benchmark and evaluator (branch \texttt{eval/shared-benchmark}) on which every method of this report is scored, with one prediction format, one script for every metric and a common leaderboard. Also designed and ran the LLM representations of a pair inside PromptORE (M4), with a local model and the DeepSeek API.
-TODO: what Axel found the most difficult and the most interesting.
+\paragraph{Laurent Zhu.} Adapted PromptORE to documents (M1 and M2: context sentences, detector, cluster naming and supervised classifier). Implemented the ATLOP-style classifier (M3) and everything added to it to reach the best F1: the document-level model, the threshold chosen on dev, the pair features, the token and pair-grid layers, the other encoders, the partial fine-tuning of the last encoder layers from cached states, the ensembles and PromptORE as a typer. Also built the corpus graph and its HTML viewer, extended the shared evaluator (Ign F1, detection and typing F1, graph metrics, seeds, bootstrap intervals and paired tests), ran the error analyses (by distance, entity types and relation frequency) and the experiments on labels (Q3) and calibration (Q4).
+The hardest part was to train a document model without a GPU, which led to caching the lower encoder layers; the most interesting, that each gain came from reading the errors of the previous model, and that several logical ideas, such as inference rules, lowered the score.
 
-\paragraph{Laurent Zhu.} Implemented the ATLOP-style classifier (M3) and everything added to it to reach the best F1: the document-level model, the threshold chosen on dev, the pair features, the token and pair-grid layers, the other encoders, the partial fine-tuning of the last encoder layers from cached states, the ensembles and PromptORE as a typer. Also built the corpus graph and its HTML viewer, extended the shared evaluator (Ign F1, detection and typing F1, graph metrics, seeds, bootstrap intervals and paired tests), and ran the experiments on labels (Q3) and calibration (Q4).
-TODO: what Laurent found the most difficult and the most interesting.
+\paragraph{Yuchen Yang.} Implemented the structural baseline (M0'): a detector and one classifier per relation, with exactly the shape of M2, on structural features only (entity types, sentence distance, number of mentions, Wikidata links), so that the gap to M2 measures what reading the text is worth. It gains 4.3 dev F1 over M0 and first showed the pattern of every method, weak detection (34 F1) and strong typing (60 F1); per-relation thresholds overfit (12.4 against 23.5 F1).
+The hardest part was to get a useful signal without reading any text; the most interesting, that the structure alone already shows where the difficulty of the task lies.
 
 \subsection{Limits}
 
