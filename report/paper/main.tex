@@ -474,7 +474,7 @@ Two datasets made comparisons inconsistent & Kept Linked-Re-DocRED only & Same d
 1.19 million train pairs, one BERT pass per pair for PromptORE & Sample of 3 unrelated pairs per related pair, with weights; embeddings cached & 271,232 embeddings computed once \\
 No server GPU & Cached encoder states; training of the last 4 layers from cached lower states & +7.5 test F1 for one model \\
 Several people, several methods & Shared benchmark, evaluator and leaderboard & One script for every number \\
-The first document model was too cautious (precision 73, recall 48) & Fact threshold chosen on dev, checked by cross-fitting & +4.8 dev F1 \\
+The first document model was too cautious (precision 72.9, recall 49.2) & Fact threshold chosen on dev, checked by cross-fitting & +4.8 dev F1 \\
 Test used during development & Every choice made on dev only & Test only reports the final scores \\
 Training diverged & Learning rate $3\times10^{-4}$ lowered to $10^{-4}$ & Stable training \\
 \botrule
